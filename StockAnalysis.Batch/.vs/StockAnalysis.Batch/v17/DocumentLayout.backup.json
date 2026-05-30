@@ -3,16 +3,24 @@
   "WorkspaceRootPath": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\services\\jquantsfinancialservice.cs.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\services\\jquantsfinancialservice.cs.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\dto\\jquantspricedto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\dto\\jquantspricedto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\dto\\jquantsfinancialdto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\dto\\jquantsfinancialdto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\services\\jquantspriceservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\services\\jquantspriceservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\dto\\jquantspricedto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\dto\\jquantspricedto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\repositories\\pricedailyrepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -45,10 +53,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\data\\stockanalysisdbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\data\\stockanalysisdbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|c:\\users\\uedaa\\onedrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\git\\stock-analysis\\stockanalysis.batch\\stockanalysis.batch\\models\\financialstatement.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{CC98CBB9-28FE-4921-8100-077B3AD081B0}|StockAnalysis.Batch\\StockAnalysis.Batch.csproj|solutionrelative:stockanalysis.batch\\models\\financialstatement.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -58,7 +62,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 5,
+          "SelectedChildIndex": 1,
           "Children": [
             {
               "$type": "Bookmark",
@@ -66,32 +70,46 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
-              "Title": "CompanyRepository.cs",
-              "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
-              "RelativeDocumentMoniker": "StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
-              "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
-              "RelativeToolTip": "StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAADwvwAAAAAAAAAAAAAAAA==",
+              "DocumentIndex": 0,
+              "Title": "JQuantsFinancialService.cs.cs",
+              "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Services\\JQuantsFinancialService.cs.cs",
+              "RelativeDocumentMoniker": "StockAnalysis.Batch\\Services\\JQuantsFinancialService.cs.cs",
+              "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Services\\JQuantsFinancialService.cs.cs",
+              "RelativeToolTip": "StockAnalysis.Batch\\Services\\JQuantsFinancialService.cs.cs",
+              "ViewState": "AgIAAAsAAAAAAAAAAAAUwBoAAABCAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-05-30T09:04:39.609Z"
+              "WhenOpened": "2026-05-30T13:17:56.54Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 2,
+              "Title": "JQuantsFinancialDto.cs",
+              "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Dto\\JQuantsFinancialDto.cs",
+              "RelativeDocumentMoniker": "StockAnalysis.Batch\\Dto\\JQuantsFinancialDto.cs",
+              "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Dto\\JQuantsFinancialDto.cs",
+              "RelativeToolTip": "StockAnalysis.Batch\\Dto\\JQuantsFinancialDto.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAC8AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-05-30T13:17:41.825Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
               "Title": "JQuantsPriceService.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Services\\JQuantsPriceService.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Services\\JQuantsPriceService.cs",
               "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Services\\JQuantsPriceService.cs",
               "RelativeToolTip": "StockAnalysis.Batch\\Services\\JQuantsPriceService.cs",
-              "ViewState": "AgIAACoAAAAAAAAAAAAIwFYAAAABAAAAAAAAAA==",
+              "ViewState": "AgIAACYAAAAAAAAAAAAmwDAAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-05-30T09:03:49.67Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 12,
               "Title": "StockAnalysisDbContext.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Data\\StockAnalysisDbContext.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Data\\StockAnalysisDbContext.cs",
@@ -103,45 +121,45 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
-              "Title": "FinancialStatement.cs",
-              "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Models\\FinancialStatement.cs",
-              "RelativeDocumentMoniker": "StockAnalysis.Batch\\Models\\FinancialStatement.cs",
-              "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Models\\FinancialStatement.cs",
-              "RelativeToolTip": "StockAnalysis.Batch\\Models\\FinancialStatement.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABgAAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-05-28T13:51:48.573Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "Program.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Program.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Program.cs",
               "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Program.cs",
               "RelativeToolTip": "StockAnalysis.Batch\\Program.cs",
-              "ViewState": "AgIAAI0AAAAAAAAAAAAAALAAAAA1AAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAK8AAAAhAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-05-28T13:09:19.675Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 6,
+              "Title": "CompanyRepository.cs",
+              "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
+              "RelativeDocumentMoniker": "StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
+              "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
+              "RelativeToolTip": "StockAnalysis.Batch\\Repositories\\CompanyRepository.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAADwvwAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-05-30T09:04:39.609Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
               "Title": "JQuantsPriceDto.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Dto\\JQuantsPriceDto.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Dto\\JQuantsPriceDto.cs",
               "ToolTip": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Dto\\JQuantsPriceDto.cs",
               "RelativeToolTip": "StockAnalysis.Batch\\Dto\\JQuantsPriceDto.cs",
-              "ViewState": "AgIAAAIAAAAAAAAAAAAmwCwAAAABAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACwAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-05-30T09:19:30.511Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 5,
               "Title": "PriceDailyRepository.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Repositories\\PriceDailyRepository.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Repositories\\PriceDailyRepository.cs",
@@ -154,7 +172,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 11,
               "Title": "PriceDaily.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Models\\PriceDaily.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Models\\PriceDaily.cs",
@@ -166,7 +184,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 8,
               "Title": "appsettings.json",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\appsettings.json",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\appsettings.json",
@@ -178,7 +196,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 7,
               "Title": "StockAnalysis.Batch.csproj",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\StockAnalysis.Batch.csproj",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\StockAnalysis.Batch.csproj",
@@ -190,7 +208,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 10,
               "Title": "JQuantsListedInfoService.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Services\\JQuantsListedInfoService.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Services\\JQuantsListedInfoService.cs",
@@ -202,7 +220,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 9,
               "Title": "Company.cs",
               "DocumentMoniker": "C:\\Users\\uedaa\\OneDrive\\\u30C9\u30AD\u30E5\u30E1\u30F3\u30C8\\GIt\\stock-analysis\\StockAnalysis.Batch\\StockAnalysis.Batch\\Models\\Company.cs",
               "RelativeDocumentMoniker": "StockAnalysis.Batch\\Models\\Company.cs",

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StockAnalysis.Batch")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+19daaa59ddafec08ca66b10046959df85900c2c3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+094482486f0d2bc5bf04c18e5310326341ca5ae6")]
 [assembly: System.Reflection.AssemblyProductAttribute("StockAnalysis.Batch")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StockAnalysis.Batch")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

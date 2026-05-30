@@ -1,159 +1,216 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using StockAnalysis.Batch.Data;
-using StockAnalysis.Batch.Services;
-using StockAnalysis.Batch.Models;
 using StockAnalysis.Batch.Dtos;
+using StockAnalysis.Batch.Models;
+using StockAnalysis.Batch.Services;
+
+// ==============================
+// 実行フラグ
+// true にした処理だけ実行される。
+// 開発中に不要なAPI呼び出しを防ぐために使う。
+// ==============================
+
+const bool RUN_FINANCIAL_IMPORT = true;
+const bool RUN_PRICE_IMPORT = false;
+const bool RUN_COMPANY_IMPORT = false;
+
+// ==============================
+// appsettings.json 読み込み
+// ==============================
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile(
+        "appsettings.json",
+        optional: false,
+        reloadOnChange: true)
     .Build();
 
-var connectionString = configuration.GetConnectionString("DefaultConnection");
+// ==============================
+// Azure SQL Database 接続文字列取得
+// ==============================
 
-var options = new DbContextOptionsBuilder<StockAnalysisDbContext>()
-    .UseSqlServer(
-        connectionString,
-        sqlOptions =>
-        {
-            sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 5,
-                maxRetryDelay: TimeSpan.FromSeconds(10),
-                errorNumbersToAdd: null);
-        })
-    .Options;
+var connectionString =
+    configuration.GetConnectionString(
+        "DefaultConnection");
 
-await using var db = new StockAnalysisDbContext(options);
+// ==============================
+// EF Core設定
+// Azure SQLの一時切断対策として
+// EnableRetryOnFailure を設定
+// ==============================
 
-Console.WriteLine("Azure SQL Databaseへ接続確認中...");
+var options =
+    new DbContextOptionsBuilder<StockAnalysisDbContext>()
+        .UseSqlServer(
+            connectionString,
+            sqlOptions =>
+            {
+                sqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorNumbersToAdd: null);
+            })
+        .Options;
 
-var companyCount = await db.Companies.CountAsync();
+// ==============================
+// DB Context 作成
+// ==============================
 
-Console.WriteLine($"Companies件数: {companyCount}");
+await using var db =
+    new StockAnalysisDbContext(options);
+
+// ==============================
+// DB接続確認
+// ==============================
+
+Console.WriteLine(
+    "Azure SQL Databaseへ接続確認中...");
+
+var companyCount =
+    await db.Companies.CountAsync();
+
+Console.WriteLine(
+    $"Companies件数: {companyCount}");
+
+// ==============================
+// HttpClient 作成
+// 全API通信で共通利用する。
+// ==============================
 
 using var httpClient = new HttpClient();
 
-//var listedInfoService = new JQuantsListedInfoService(
-//    httpClient,
-//    configuration);
+// ==============================
+// 財務情報取得
+// ==============================
 
-//Console.WriteLine("J-Quants 上場銘柄一覧取得中...");
-
-//var listedItems = await listedInfoService.GetListedInfoAsync();
-
-//Console.WriteLine($"取得件数: {listedItems.Count}");
-
-//foreach (var item in listedItems.Take(5))
-//{
-//    Console.WriteLine(
-//        $"{item.Code} " +
-//        $"{item.CompanyName} " +
-//        $"{item.MarketName} " +
-//        $"{item.Sector33Name}");
-//}
-
-//Console.WriteLine("Companiesへ保存中...");
-
-//var now = DateTime.Now;
-//var savedCount = 0;
-//var updatedCount = 0;
-
-//foreach (var item in listedItems)
-//{
-//    if (string.IsNullOrWhiteSpace(item.Code))
-//    {
-//        continue;
-//    }
-
-//    var company = await db.Companies.FindAsync(item.Code);
-//    // 会社情報追加
-//    if (company == null)
-//    {
-//        db.Companies.Add(new Company
-//        {
-//            Code = item.Code,
-//            CompanyName = item.CompanyName,
-//            CompanyNameEnglish = item.CompanyNameEnglish,
-//            MarketCode = item.MarketCode,
-//            MarketName = item.MarketName,
-//            Sector17Code = item.Sector17Code,
-//            Sector17Name = item.Sector17Name,
-//            Sector33Code = item.Sector33Code,
-//            Sector33Name = item.Sector33Name,
-//            IsActive = true,
-//            CreatedAt = now,
-//            UpdatedAt = now
-//        });
-
-//        savedCount++;
-//    }
-//    // 会社情報更新
-//    else
-//    {
-//        company.CompanyName = item.CompanyName;
-//        company.CompanyNameEnglish = item.CompanyNameEnglish;
-//        company.MarketCode = item.MarketCode;
-//        company.MarketName = item.MarketName;
-//        company.Sector17Code = item.Sector17Code;
-//        company.Sector17Name = item.Sector17Name;
-//        company.Sector33Code = item.Sector33Code;
-//        company.Sector33Name = item.Sector33Name;
-//        company.IsActive = true;
-//        company.UpdatedAt = now;
-
-//        updatedCount++;
-//    }
-//}
-
-//await db.SaveChangesAsync();
-
-//Console.WriteLine($"Companies保存完了: 追加 {savedCount}件 / 更新 {updatedCount}件");
-
-// J-Quantsの株価取得サービスを作成する。
-// HttpClientはAPI通信、configurationはappsettings.jsonのAPIキー取得に使う。
-var priceService = new JQuantsPriceService(
-    httpClient,
-    configuration);
-
-// まずは全銘柄ではなく、代表的な5銘柄だけで動作確認する。
-// いきなり全銘柄を取得すると、エラー時の切り分けが難しくなるため。
-var targetCodes = new[]
+if (RUN_FINANCIAL_IMPORT)
 {
-    "72030", // トヨタ自動車
-    "67580", // ソニーグループ
-    "99840", // ソフトバンクグループ
-    "83060", // 三菱UFJフィナンシャル・グループ
-    "94320"  // 日本電信電話
-};
+    Console.WriteLine();
+    Console.WriteLine(
+        "==============================");
 
-// 銘柄ごとにJ-Quants APIから日足株価を取得し、PricesDailyテーブルへ保存する。
-foreach (var code in targetCodes)
-{
-    Console.WriteLine($"{code} の株価取得中...");
+    Console.WriteLine(
+        "財務情報取得開始");
 
-    // 指定銘柄の日足株価を取得する。
-    var prices = await priceService.GetPricesAsync(code);
+    Console.WriteLine(
+        "==============================");
 
-    Console.WriteLine($"{code}: 取得件数 {prices.Count}");
+    // 財務情報取得サービス作成
+    var financialService =
+        new JQuantsFinancialService(
+            httpClient,
+            configuration);
 
-    // 取得件数が0件の場合は、保存処理をせず次の銘柄へ進む。
-    // 銘柄コード違い、API制限、対象期間外などの可能性がある。
-    if (prices.Count == 0)
+    // まずはトヨタのみで確認
+    var financials =
+        await financialService.GetFinancialsAsync(
+            "72030");
+
+    Console.WriteLine(
+        $"財務件数: {financials.Count}");
+
+    // 先頭5件だけConsole表示
+    foreach (var item in financials.Take(5))
     {
-        Console.WriteLine($"{code}: 取得データがないためスキップします。");
-        continue;
+        Console.WriteLine(
+            $"{item.Code} " +
+            $"{item.DisclosedDate} " +
+            $"{item.NetSales}");
     }
 
-    // DBへUPSERTする。
-    // 既存データがあれば更新、なければ追加する。
-    await SavePricesAsync(db, prices);
+    Console.WriteLine(
+        "FinancialStatementsへ保存中...");
 
-    Console.WriteLine($"{code}: 保存完了");
+    // DB保存
+    await SaveFinancialsAsync(
+        db,
+        financials);
+
+    Console.WriteLine(
+        "FinancialStatements保存完了");
 }
 
-// 日足株価データをPricesDailyテーブルへ保存する。
-// 主キーは Code + TradeDate のため、同じ銘柄・同じ日付なら更新する。
+// ==============================
+// 株価取得
+// ==============================
+
+if (RUN_PRICE_IMPORT)
+{
+    Console.WriteLine();
+    Console.WriteLine(
+        "==============================");
+
+    Console.WriteLine(
+        "株価取得開始");
+
+    Console.WriteLine(
+        "==============================");
+
+    // 株価取得サービス作成
+    var priceService =
+        new JQuantsPriceService(
+            httpClient,
+            configuration);
+
+    // まずは代表銘柄のみ
+    var targetCodes = new[]
+    {
+        "72030", // トヨタ
+        "67580", // ソニーG
+        "99840", // ソフトバンクG
+        "83060", // 三菱UFJ
+        "94320"  // NTT
+    };
+
+    // 銘柄ごとに取得
+    foreach (var code in targetCodes)
+    {
+        Console.WriteLine(
+            $"{code} の株価取得中...");
+
+        var prices =
+            await priceService.GetPricesAsync(
+                code);
+
+        Console.WriteLine(
+            $"{code}: 取得件数 {prices.Count}");
+
+        // 0件ならスキップ
+        if (prices.Count == 0)
+        {
+            Console.WriteLine(
+                $"{code}: データなし");
+
+            continue;
+        }
+
+        // DB保存
+        await SavePricesAsync(
+            db,
+            prices);
+
+        Console.WriteLine(
+            $"{code}: 保存完了");
+    }
+}
+
+// ==============================
+// Companies取得
+// 今は未使用
+// ==============================
+
+if (RUN_COMPANY_IMPORT)
+{
+    Console.WriteLine(
+        "Companies Import は未実装");
+}
+
+// ==============================
+// 株価保存
+// ==============================
+
 static async Task SavePricesAsync(
     StockAnalysisDbContext db,
     List<JQuantsPriceDto> prices)
@@ -162,68 +219,78 @@ static async Task SavePricesAsync(
 
     foreach (var item in prices)
     {
-        // CodeまたはDateが空の場合は保存できないためスキップする。
+        // 必須項目不足ならスキップ
         if (string.IsNullOrWhiteSpace(item.Code) ||
             string.IsNullOrWhiteSpace(item.Date))
         {
             continue;
         }
 
-        // J-QuantsのDateは文字列なので、DB保存用にDateTimeへ変換する。
-        var tradeDate = DateTime.Parse(item.Date);
+        // 日付変換
+        var tradeDate =
+            DateTime.Parse(item.Date);
 
-        // 既に同じ銘柄・同じ日付のデータが存在するか確認する。
-        var price = await db.PricesDaily.FindAsync(
-            item.Code,
-            tradeDate);
+        // 既存確認
+        var price =
+            await db.PricesDaily.FindAsync(
+                item.Code,
+                tradeDate);
 
+        // 新規追加
         if (price == null)
         {
-            // 未登録の場合は新規追加する。
-            db.PricesDaily.Add(new PriceDaily
-            {
-                Code = item.Code,
-                TradeDate = tradeDate,
+            db.PricesDaily.Add(
+                new PriceDaily
+                {
+                    Code = item.Code,
+                    TradeDate = tradeDate,
 
-                OpenPrice = item.Open,
-                HighPrice = item.High,
-                LowPrice = item.Low,
-                ClosePrice = item.Close,
+                    OpenPrice = item.Open,
+                    HighPrice = item.High,
+                    LowPrice = item.Low,
+                    ClosePrice = item.Close,
 
-                // J-Quants V2では出来高がdecimalで返るため、
-                // DBのBIGINTに合わせてlongへ変換する。
-                Volume = item.Volume.HasValue
-                    ? (long)item.Volume.Value
-                    : null,
+                    Volume =
+                        item.Volume.HasValue
+                        ? (long)item.Volume.Value
+                        : null,
 
-                TurnoverValue = item.TurnoverValue,
+                    TurnoverValue =
+                        item.TurnoverValue,
 
-                AdjustmentClose = item.AdjustmentClose,
+                    AdjustmentClose =
+                        item.AdjustmentClose,
 
-                AdjustmentVolume = item.AdjustmentVolume.HasValue
-                    ? (long)item.AdjustmentVolume.Value
-                    : null,
+                    AdjustmentVolume =
+                        item.AdjustmentVolume.HasValue
+                        ? (long)item.AdjustmentVolume.Value
+                        : null,
 
-                CreatedAt = now,
-                UpdatedAt = now
-            });
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
         }
         else
         {
-            // 登録済みの場合は最新値で更新する。
+            // 更新
             price.OpenPrice = item.Open;
             price.HighPrice = item.High;
             price.LowPrice = item.Low;
             price.ClosePrice = item.Close;
 
-            price.Volume = item.Volume.HasValue
+            price.Volume =
+                item.Volume.HasValue
                 ? (long)item.Volume.Value
                 : null;
 
-            price.TurnoverValue = item.TurnoverValue;
-            price.AdjustmentClose = item.AdjustmentClose;
+            price.TurnoverValue =
+                item.TurnoverValue;
 
-            price.AdjustmentVolume = item.AdjustmentVolume.HasValue
+            price.AdjustmentClose =
+                item.AdjustmentClose;
+
+            price.AdjustmentVolume =
+                item.AdjustmentVolume.HasValue
                 ? (long)item.AdjustmentVolume.Value
                 : null;
 
@@ -231,6 +298,178 @@ static async Task SavePricesAsync(
         }
     }
 
-    // まとめてDBへ反映する。
+    // DB反映
     await db.SaveChangesAsync();
+}
+
+// ==============================
+// 財務保存
+// ==============================
+
+static async Task SaveFinancialsAsync(
+    StockAnalysisDbContext db,
+    List<JQuantsFinancialDto> financials)
+{
+    var now = DateTime.Now;
+
+    foreach (var item in financials)
+    {
+        // 必須項目不足ならスキップ
+        if (string.IsNullOrWhiteSpace(
+                item.DisclosureNumber) ||
+            string.IsNullOrWhiteSpace(
+                item.Code))
+        {
+            continue;
+        }
+
+        // 既存確認
+        var financial =
+            await db.FinancialStatements.FindAsync(
+                item.DisclosureNumber);
+
+        // 新規追加
+        if (financial == null)
+        {
+            db.FinancialStatements.Add(
+                new FinancialStatement
+                {
+                    DisclosureNumber =
+                        item.DisclosureNumber,
+
+                    Code = item.Code,
+
+                    DisclosedDate =
+                        ParseDate(
+                            item.DisclosedDate),
+
+                    TypeOfDocument =
+                        item.TypeOfDocument,
+
+                    NetSales =
+                        ParseDecimal(
+                            item.NetSales),
+
+                    OperatingProfit =
+                        ParseDecimal(
+                            item.OperatingProfit),
+
+                    Profit =
+                        ParseDecimal(
+                            item.Profit),
+
+                    EarningsPerShare =
+                        ParseDecimal(
+                            item.EarningsPerShare),
+
+                    EquityToAssetRatio =
+                        ParseDecimal(
+                            item.EquityToAssetRatio),
+
+                    BookValuePerShare =
+                        ParseDecimal(
+                            item.BookValuePerShare),
+
+                    ResultDividendPerShareAnnual =
+                        ParseDecimal(
+                            item.ResultDividendPerShareAnnual),
+
+                    ForecastDividendPerShareAnnual =
+                        ParseDecimal(
+                            item.ForecastDividendPerShareAnnual),
+
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+        else
+        {
+            // 更新
+            financial.Code = item.Code;
+
+            financial.DisclosedDate =
+                ParseDate(
+                    item.DisclosedDate);
+
+            financial.TypeOfDocument =
+                item.TypeOfDocument;
+
+            financial.NetSales =
+                ParseDecimal(
+                    item.NetSales);
+
+            financial.OperatingProfit =
+                ParseDecimal(
+                    item.OperatingProfit);
+
+            financial.Profit =
+                ParseDecimal(
+                    item.Profit);
+
+            financial.EarningsPerShare =
+                ParseDecimal(
+                    item.EarningsPerShare);
+
+            financial.EquityToAssetRatio =
+                ParseDecimal(
+                    item.EquityToAssetRatio);
+
+            financial.BookValuePerShare =
+                ParseDecimal(
+                    item.BookValuePerShare);
+
+            financial.ResultDividendPerShareAnnual =
+                ParseDecimal(
+                    item.ResultDividendPerShareAnnual);
+
+            financial.ForecastDividendPerShareAnnual =
+                ParseDecimal(
+                    item.ForecastDividendPerShareAnnual);
+
+            financial.UpdatedAt = now;
+        }
+    }
+
+    // DB反映
+    await db.SaveChangesAsync();
+}
+
+// ==============================
+// decimal変換
+// 空文字はnullにする
+// ==============================
+
+static decimal? ParseDecimal(
+    string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    return decimal.TryParse(
+        value,
+        out var result)
+        ? result
+        : null;
+}
+
+// ==============================
+// DateTime変換
+// 空文字はnullにする
+// ==============================
+
+static DateTime? ParseDate(
+    string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    return DateTime.TryParse(
+        value,
+        out var result)
+        ? result
+        : null;
 }
