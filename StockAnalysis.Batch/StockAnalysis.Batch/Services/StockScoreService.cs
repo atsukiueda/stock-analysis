@@ -83,6 +83,10 @@ public class StockScoreService
     public async Task GenerateAllAsync()
     {
         var codes = await _db.Companies
+            .Where(x => x.IsActive)
+            .Where(x => x.MarketName != "その他")
+            .Where(x => x.MarketName != "TOKYO PRO MARKET")
+            .OrderBy(x => x.Code)
             .Select(x => x.Code)
             .ToListAsync();
 
@@ -280,6 +284,7 @@ public class StockScoreService
             .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
             .Where(x => x.NetSales != null)
             .Where(x => x.OperatingProfit != null)
+            .Where(x => x.EarningsPerShare != null)
             .OrderByDescending(x => x.DisclosedDate)
             .Take(2)
             .ToListAsync();
@@ -300,10 +305,15 @@ public class StockScoreService
             latest.OperatingProfit,
             previous.OperatingProfit);
 
+        var epsGrowthRate = CalculateGrowthRate(
+            latest.EarningsPerShare,
+            previous.EarningsPerShare);
+
         var score = 0;
 
         score += ToGrowthPoint(salesGrowthRate);
         score += ToGrowthPoint(operatingProfitGrowthRate);
+        score += ToGrowthPoint(epsGrowthRate);
 
         return score;
     }
