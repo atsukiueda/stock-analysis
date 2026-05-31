@@ -13,7 +13,11 @@ using StockAnalysis.Batch.Services;
 
 const bool RUN_FINANCIAL_IMPORT = false;
 const bool RUN_PRICE_IMPORT = false;
-const bool RUN_MARKET_INDEX_IMPORT = true;
+const bool RUN_MARKET_INDEX_IMPORT = false;
+const bool RUN_USDJPY_IMPORT = false;
+const bool RUN_SP500_IMPORT = false;
+const bool RUN_NASDAQ_IMPORT = false;
+const bool RUN_VIX_IMPORT = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -54,6 +58,12 @@ Console.WriteLine("Azure SQL Databaseへ接続確認中...");
 var companyCount = await db.Companies.CountAsync();
 
 Console.WriteLine($"Companies件数: {companyCount}");
+
+var alphaVantageApiKey =
+    configuration["AlphaVantage:ApiKey"];
+
+Console.WriteLine(
+    $"Alpha Vantage API Key Length: {alphaVantageApiKey?.Length}");
 
 // ==============================
 // API通信用 HttpClient
@@ -166,6 +176,143 @@ if (RUN_MARKET_INDEX_IMPORT)
     await SaveTopixAsync(db, topixItems);
 
     Console.WriteLine("MarketIndicesDaily保存完了");
+}
+
+// ==============================
+// USDJPY取得
+// ==============================
+
+if (RUN_USDJPY_IMPORT)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== USDJPY取得開始 ===");
+
+    var fxService = new AlphaVantageFxService(
+        httpClient,
+        configuration);
+
+    var usdJpyItems = await fxService.GetUsdJpyDailyAsync();
+
+    Console.WriteLine($"USDJPY取得件数: {usdJpyItems.Count}");
+
+    foreach (var item in usdJpyItems.Take(5))
+    {
+        Console.WriteLine(
+            $"{item.Key} " +
+            $"{item.Value.Close}");
+    }
+
+    Console.WriteLine(
+    "MarketIndicesDailyへ保存中...");
+
+    await SaveUsdJpyAsync(
+        db,
+        usdJpyItems);
+
+    Console.WriteLine(
+        "USDJPY保存完了");
+}
+
+// ==============================
+// SP500取得
+// ==============================
+
+if (RUN_SP500_IMPORT)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== SP500取得開始 ===");
+
+    var indexService = new AlphaVantageIndexService(
+        httpClient,
+        configuration);
+
+    var sp500Items = await indexService.GetDailyAsync("SPY");
+
+    Console.WriteLine($"SP500取得件数: {sp500Items.Count}");
+
+    foreach (var item in sp500Items.Take(5))
+    {
+        Console.WriteLine(
+            $"{item.Key} " +
+            $"{item.Value.Close}");
+    }
+
+    Console.WriteLine(
+    "MarketIndicesDailyへ保存中...");
+
+    await SaveSp500Async(
+        db,
+        sp500Items);
+
+    Console.WriteLine(
+        "SP500保存完了");
+}
+
+// ==============================
+// NASDAQ取得
+// ==============================
+
+if (RUN_NASDAQ_IMPORT)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== NASDAQ取得開始 ===");
+
+    var indexService = new AlphaVantageIndexService(
+        httpClient,
+        configuration);
+
+    // QQQはNASDAQ100連動ETF。
+    // 開発初期のNASDAQ系市況 proxy として利用する。
+    var nasdaqItems = await indexService.GetDailyAsync("QQQ");
+
+    Console.WriteLine($"NASDAQ取得件数: {nasdaqItems.Count}");
+
+    foreach (var item in nasdaqItems.Take(5))
+    {
+        Console.WriteLine(
+            $"{item.Key} " +
+            $"{item.Value.Close}");
+    }
+
+    Console.WriteLine("MarketIndicesDailyへ保存中...");
+
+    await SaveNasdaqAsync(
+        db,
+        nasdaqItems);
+
+    Console.WriteLine("NASDAQ保存完了");
+}
+
+// ==============================
+// VIX取得
+// ==============================
+
+if (RUN_VIX_IMPORT)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== VIX取得開始 ===");
+
+    var vixService = new FredVixService(
+        httpClient,
+        configuration);
+
+    var vixItems = await vixService.GetVixAsync();
+
+    Console.WriteLine($"VIX取得件数: {vixItems.Count}");
+
+    foreach (var item in vixItems
+                 .Where(x => x.Value != ".")
+                 .TakeLast(5))
+    {
+        Console.WriteLine(
+            $"{item.Date} {item.Value}");
+    }
+
+    Console.WriteLine("MarketIndicesDailyへ保存中...");
+
+    await SaveVixAsync(db, vixItems);
+
+    Console.WriteLine("VIX保存完了");
 }
 
 // ==============================
@@ -340,6 +487,274 @@ static async Task SaveTopixAsync(
             index.LowValue = item.Low;
             index.CloseValue = item.Close;
             index.Source = "J-Quants";
+            index.UpdatedAt = now;
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+// ==============================
+// USDJPY保存
+// ==============================
+
+static async Task SaveUsdJpyAsync(
+    StockAnalysisDbContext db,
+    Dictionary<string, AlphaVantageFxDailyDto> usdJpyItems)
+{
+    var now = DateTime.Now;
+
+    foreach (var item in usdJpyItems)
+    {
+        var tradeDate =
+            DateTime.Parse(item.Key);
+
+        var index =
+            await db.MarketIndicesDaily.FindAsync(
+                "USDJPY",
+                tradeDate);
+
+        var open =
+            ParseDecimal(item.Value.Open);
+
+        var high =
+            ParseDecimal(item.Value.High);
+
+        var low =
+            ParseDecimal(item.Value.Low);
+
+        var close =
+            ParseDecimal(item.Value.Close);
+
+        if (index == null)
+        {
+            db.MarketIndicesDaily.Add(
+                new MarketIndexDaily
+                {
+                    IndexCode = "USDJPY",
+                    IndexName = "USD/JPY",
+
+                    TradeDate = tradeDate,
+
+                    OpenValue = open,
+                    HighValue = high,
+                    LowValue = low,
+                    CloseValue = close,
+
+                    Volume = null,
+
+                    Source = "AlphaVantage",
+
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+        else
+        {
+            index.OpenValue = open;
+            index.HighValue = high;
+            index.LowValue = low;
+            index.CloseValue = close;
+
+            index.Source = "AlphaVantage";
+
+            index.UpdatedAt = now;
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+// ==============================
+// SP500保存
+// ==============================
+
+static async Task SaveSp500Async(
+    StockAnalysisDbContext db,
+    Dictionary<string, AlphaVantageDailyDto> sp500Items)
+{
+    var now = DateTime.Now;
+
+    foreach (var item in sp500Items)
+    {
+        var tradeDate =
+            DateTime.Parse(item.Key);
+
+        var index =
+            await db.MarketIndicesDaily.FindAsync(
+                "SP500",
+                tradeDate);
+
+        var open =
+            ParseDecimal(item.Value.Open);
+
+        var high =
+            ParseDecimal(item.Value.High);
+
+        var low =
+            ParseDecimal(item.Value.Low);
+
+        var close =
+            ParseDecimal(item.Value.Close);
+
+        long? volume =
+            long.TryParse(
+                item.Value.Volume,
+                out var vol)
+                ? vol
+                : null;
+
+        if (index == null)
+        {
+            db.MarketIndicesDaily.Add(
+                new MarketIndexDaily
+                {
+                    IndexCode = "SP500",
+                    IndexName = "S&P500",
+
+                    TradeDate = tradeDate,
+
+                    OpenValue = open,
+                    HighValue = high,
+                    LowValue = low,
+                    CloseValue = close,
+
+                    Volume = volume,
+
+                    Source = "AlphaVantage",
+
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+        else
+        {
+            index.OpenValue = open;
+            index.HighValue = high;
+            index.LowValue = low;
+            index.CloseValue = close;
+            index.Volume = volume;
+
+            index.UpdatedAt = now;
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+// ==============================
+// NASDAQ保存
+// ==============================
+
+static async Task SaveNasdaqAsync(
+    StockAnalysisDbContext db,
+    Dictionary<string, AlphaVantageDailyDto> nasdaqItems)
+{
+    var now = DateTime.Now;
+
+    foreach (var item in nasdaqItems)
+    {
+        var tradeDate = DateTime.Parse(item.Key);
+
+        var index = await db.MarketIndicesDaily.FindAsync(
+            "NASDAQ",
+            tradeDate);
+
+        var open = ParseDecimal(item.Value.Open);
+        var high = ParseDecimal(item.Value.High);
+        var low = ParseDecimal(item.Value.Low);
+        var close = ParseDecimal(item.Value.Close);
+
+        long? volume =
+            long.TryParse(
+                item.Value.Volume,
+                out var vol)
+                ? vol
+                : null;
+
+        if (index == null)
+        {
+            db.MarketIndicesDaily.Add(
+                new MarketIndexDaily
+                {
+                    IndexCode = "NASDAQ",
+                    IndexName = "NASDAQ100 / QQQ",
+                    TradeDate = tradeDate,
+                    OpenValue = open,
+                    HighValue = high,
+                    LowValue = low,
+                    CloseValue = close,
+                    Volume = volume,
+                    Source = "AlphaVantage",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+        else
+        {
+            index.IndexName = "NASDAQ100 / QQQ";
+            index.OpenValue = open;
+            index.HighValue = high;
+            index.LowValue = low;
+            index.CloseValue = close;
+            index.Volume = volume;
+            index.Source = "AlphaVantage";
+            index.UpdatedAt = now;
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+// ==============================
+// VIX保存
+// ==============================
+
+static async Task SaveVixAsync(
+    StockAnalysisDbContext db,
+    List<FredObservationDto> vixItems)
+{
+    var now = DateTime.Now;
+
+    foreach (var item in vixItems)
+    {
+        if (string.IsNullOrWhiteSpace(item.Date) ||
+            string.IsNullOrWhiteSpace(item.Value) ||
+            item.Value == ".")
+        {
+            continue;
+        }
+
+        var tradeDate = DateTime.Parse(item.Date);
+        var close = ParseDecimal(item.Value);
+
+        var index = await db.MarketIndicesDaily.FindAsync(
+            "VIX",
+            tradeDate);
+
+        if (index == null)
+        {
+            db.MarketIndicesDaily.Add(
+                new MarketIndexDaily
+                {
+                    IndexCode = "VIX",
+                    IndexName = "CBOE Volatility Index",
+                    TradeDate = tradeDate,
+                    OpenValue = null,
+                    HighValue = null,
+                    LowValue = null,
+                    CloseValue = close,
+                    Volume = null,
+                    Source = "FRED",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+        else
+        {
+            index.IndexName = "CBOE Volatility Index";
+            index.CloseValue = close;
+            index.Source = "FRED";
             index.UpdatedAt = now;
         }
     }
