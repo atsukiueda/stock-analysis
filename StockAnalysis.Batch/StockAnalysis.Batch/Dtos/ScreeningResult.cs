@@ -11,4 +11,6 @@
     public int TechnicalScore { get; set; }
 
     public int MarketScore { get; set; }
+
+    public int MarketRegimeBonus { get; set; }
 }

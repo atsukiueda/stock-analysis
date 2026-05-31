@@ -385,6 +385,14 @@ public class MarketScoreService
             TotalScore = totalScore,
             MarketRegime = regime,
 
+            Comment =
+                $"TOPIX:{topixScore}, " +
+                $"SP500:{sp500Score}, " +
+                $"NASDAQ:{nasdaqScore}, " +
+                $"USDJPY:{usdJpyScore}, " +
+                $"VIX:{vixScore}, " +
+                $"TOPIX Momentum:{topixMomentumScore}",
+
             CreatedAt = now,
             UpdatedAt = now
         };

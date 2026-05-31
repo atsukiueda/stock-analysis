@@ -374,6 +374,21 @@ if (RUN_SCREENING)
     var service =
         new ScreeningService(db);
 
+    var latestMarket = await db.MarketScoresDaily
+    .OrderByDescending(x => x.ScoreDate)
+    .FirstAsync();
+
+    Console.WriteLine();
+    Console.WriteLine("=== 市場環境 ===");
+    Console.WriteLine(
+        $"Regime : {latestMarket.MarketRegime}");
+
+    Console.WriteLine(
+        $"Score  : {latestMarket.TotalScore}");
+
+    Console.WriteLine(
+        $"Comment: {latestMarket.Comment ?? "-"}");
+
     var results =
         await service.GetTopStocksAsync();
 
@@ -385,6 +400,7 @@ if (RUN_SCREENING)
             $"Total:{item.TotalScore} " +
             $"F:{item.FinancialScore} " +
             $"T:{item.TechnicalScore} " +
+            $"B:{item.MarketRegimeBonus} " +
             $"M:{item.MarketScore}");
     }
 }
