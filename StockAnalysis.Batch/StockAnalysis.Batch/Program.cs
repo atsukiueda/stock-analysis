@@ -19,7 +19,12 @@ const bool RUN_SP500_IMPORT = false;
 const bool RUN_NASDAQ_IMPORT = false;
 const bool RUN_VIX_IMPORT = false;
 const bool RUN_MARKET_SCORE_CALCULATION = false;
-const bool RUN_MARKET_SCORE_HISTORY = true;
+const bool RUN_MARKET_SCORE_HISTORY = false;
+const bool RUN_STOCK_SCORE_CALCULATION = false;
+const bool RUN_ALL_STOCK_SCORE = false;
+const bool RUN_PRICE_IMPORT_100 = false;
+const bool RUN_FINANCIAL_IMPORT_100 = false;
+const bool RUN_SCREENING = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -64,8 +69,8 @@ Console.WriteLine($"Companies件数: {companyCount}");
 var alphaVantageApiKey =
     configuration["AlphaVantage:ApiKey"];
 
-Console.WriteLine(
-    $"Alpha Vantage API Key Length: {alphaVantageApiKey?.Length}");
+//Console.WriteLine(
+//    $"Alpha Vantage API Key Length: {alphaVantageApiKey?.Length}");
 
 // ==============================
 // API通信用 HttpClient
@@ -353,6 +358,34 @@ if (RUN_MARKET_SCORE_CALCULATION)
         await marketScoreService.SaveAsync(score);
 
         Console.WriteLine("MarketScoresDaily保存完了");
+    }
+}
+
+// ==============================
+// スクリーニング
+// ==============================
+
+if (RUN_SCREENING)
+{
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== スクリーニング開始 ===");
+
+    var service =
+        new ScreeningService(db);
+
+    var results =
+        await service.GetTopStocksAsync();
+
+    foreach (var item in results)
+    {
+        Console.WriteLine(
+            $"{item.Code} " +
+            $"{item.CompanyName} " +
+            $"Total:{item.TotalScore} " +
+            $"F:{item.FinancialScore} " +
+            $"T:{item.TechnicalScore} " +
+            $"M:{item.MarketScore}");
     }
 }
 
@@ -820,6 +853,203 @@ if (RUN_MARKET_SCORE_HISTORY)
 
     Console.WriteLine(
         "市場スコア履歴作成完了");
+}
+
+
+// ==============================
+// 単一銘柄スコア計算
+// ==============================
+
+if (RUN_STOCK_SCORE_CALCULATION)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== 銘柄スコア計算開始 ===");
+
+    var stockScoreService =
+        new StockScoreService(db);
+
+    var score =
+        await stockScoreService.CalculateAsync("72030");
+
+    if (score == null)
+    {
+        Console.WriteLine("銘柄スコアを計算できませんでした。");
+    }
+    else
+    {
+        Console.WriteLine(
+            $"{score.Code} {score.ScoreDate:yyyy-MM-dd} Total:{score.TotalScore}");
+
+        Console.WriteLine(
+            $"Financial:{score.FinancialScore}, Technical:{score.TechnicalScore}, Market:{score.MarketScore}");
+
+        await stockScoreService.SaveAsync(score);
+
+        Console.WriteLine("StockScoresDaily保存完了");
+    }
+}
+
+// ==============================
+// 全銘柄スコア計算
+// ==============================
+
+if (RUN_ALL_STOCK_SCORE)
+{
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== 全銘柄スコア計算開始 ===");
+
+    var stockScoreService =
+        new StockScoreService(db);
+
+    await stockScoreService.GenerateAllAsync();
+
+    Console.WriteLine(
+        "全銘柄スコア計算完了");
+}
+
+// ==============================
+// 100銘柄情報取得
+// ==============================
+
+if (RUN_PRICE_IMPORT_100)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== 100銘柄 株価取得開始 ===");
+
+    var priceService = new JQuantsPriceService(
+        httpClient,
+        configuration);
+
+    var targetCodes = await db.Companies
+        .Where(x => x.IsActive)
+        .OrderBy(x => x.Code)
+        .Select(x => x.Code)
+        .Take(100)
+        .ToListAsync();
+
+    Console.WriteLine($"対象銘柄数: {targetCodes.Count}");
+
+    foreach (var code in targetCodes)
+    {
+        Console.WriteLine($"{code} の株価取得中...");
+
+        var prices = await priceService.GetPricesAsync(code);
+
+        Console.WriteLine($"{code}: 取得件数 {prices.Count}");
+
+        if (prices.Count == 0)
+        {
+            Console.WriteLine($"{code}: データなし。スキップします。");
+            continue;
+        }
+
+        await SavePricesAsync(db, prices);
+
+        await Task.Delay(300);
+
+        Console.WriteLine($"{code}: 保存完了");
+    }
+
+    Console.WriteLine("100銘柄 株価取得完了");
+}
+
+// ==============================
+// 100財務情報取得
+// ==============================
+
+if (RUN_FINANCIAL_IMPORT_100)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== 100銘柄 財務情報取得開始 ===");
+
+    var financialService = new JQuantsFinancialService(
+        httpClient,
+        configuration);
+
+    var priceCodes = await db.PricesDaily
+    .Select(x => x.Code)
+    .Distinct()
+    .ToListAsync();
+
+    var alreadyImportedCodes = await db.FinancialStatements
+        .Select(x => x.Code)
+        .Distinct()
+        .ToListAsync();
+
+    var targetCodes = await db.Companies
+        .Where(x => x.IsActive)
+        .Where(x => priceCodes.Contains(x.Code))
+        .Where(x => !alreadyImportedCodes.Contains(x.Code))
+        .Where(x => x.MarketName != "その他")
+        .Where(x => x.MarketName != "TOKYO PRO MARKET")
+        .OrderBy(x => x.Code)
+        .Select(x => x.Code)
+        .Take(500)
+        .ToListAsync();
+
+    Console.WriteLine($"取得済み財務銘柄数: {alreadyImportedCodes.Count}");
+    Console.WriteLine($"今回の対象銘柄数: {targetCodes.Count}");
+
+    foreach (var code in targetCodes.Take(20))
+    {
+        Console.WriteLine($"対象: {code}");
+    }
+
+    Console.WriteLine($"対象銘柄数: {targetCodes.Count}");
+
+    foreach (var code in targetCodes)
+    {
+        Console.WriteLine($"{code} の財務情報取得中...");
+
+        var retryCount = 0;
+        var success = false;
+
+        // 429が出た場合、同じ銘柄を最大3回まで再試行する。
+        while (!success && retryCount < 3)
+        {
+            try
+            {
+                var financials =
+                    await financialService.GetFinancialsAsync(code);
+
+                Console.WriteLine($"{code}: 取得件数 {financials.Count}");
+
+                // ETFや投信など、財務データがない銘柄はここでスキップする。
+                if (financials.Count == 0)
+                {
+                    Console.WriteLine($"{code}: 財務データなし。スキップします。");
+                    success = true;
+                    break;
+                }
+
+                await SaveFinancialsAsync(db, financials);
+
+                Console.WriteLine($"{code}: 保存完了");
+
+                success = true;
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("429"))
+            {
+                retryCount++;
+
+                Console.WriteLine(
+                    $"{code}: レート制限です。{retryCount}回目。60秒待機します。");
+
+                await Task.Delay(TimeSpan.FromSeconds(60));
+            }
+        }
+
+        if (!success)
+        {
+            Console.WriteLine($"{code}: リトライ上限に達したためスキップします。");
+        }
+
+        // API連続呼び出しを避けるため、通常時も少し待機する。
+        await Task.Delay(3000);
+    }
+
+    Console.WriteLine("100銘柄 財務情報取得完了");
 }
 
 // ==============================
