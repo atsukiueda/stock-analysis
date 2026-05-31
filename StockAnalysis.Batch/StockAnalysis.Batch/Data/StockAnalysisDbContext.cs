@@ -16,6 +16,8 @@ public class StockAnalysisDbContext : DbContext
 
     public DbSet<MarketIndexDaily> MarketIndicesDaily => Set<MarketIndexDaily>();
 
+    public DbSet<MarketScoreDaily> MarketScoresDaily => Set<MarketScoreDaily>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Company>(entity =>
@@ -40,6 +42,12 @@ public class StockAnalysisDbContext : DbContext
         {
             entity.ToTable("MarketIndicesDaily");
             entity.HasKey(e => new { e.IndexCode, e.TradeDate });
+        });
+
+        modelBuilder.Entity<MarketScoreDaily>(entity =>
+        {
+            entity.ToTable("MarketScoresDaily");
+            entity.HasKey(e => e.ScoreDate);
         });
     }
 }

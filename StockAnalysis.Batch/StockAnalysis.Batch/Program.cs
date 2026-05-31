@@ -17,7 +17,8 @@ const bool RUN_MARKET_INDEX_IMPORT = false;
 const bool RUN_USDJPY_IMPORT = false;
 const bool RUN_SP500_IMPORT = false;
 const bool RUN_NASDAQ_IMPORT = false;
-const bool RUN_VIX_IMPORT = true;
+const bool RUN_VIX_IMPORT = false;
+const bool RUN_MARKET_SCORE_CALCULATION = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -313,6 +314,45 @@ if (RUN_VIX_IMPORT)
     await SaveVixAsync(db, vixItems);
 
     Console.WriteLine("VIX保存完了");
+}
+
+// ==============================
+// 市場スコア計算
+// ==============================
+
+if (RUN_MARKET_SCORE_CALCULATION)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== 市場スコア計算開始 ===");
+
+    var marketScoreService =
+        new MarketScoreService(db);
+
+    var score =
+        await marketScoreService.CalculateLatestAsync();
+
+    if (score == null)
+    {
+        Console.WriteLine("市場スコアを計算できませんでした。");
+    }
+    else
+    {
+        Console.WriteLine(
+            $"ScoreDate: {score.ScoreDate:yyyy-MM-dd}");
+
+        Console.WriteLine(
+            $"TotalScore: {score.TotalScore}");
+
+        Console.WriteLine(
+            $"MarketRegime: {score.MarketRegime}");
+
+        Console.WriteLine(
+            $"Comment: {score.Comment}");
+
+        await marketScoreService.SaveAsync(score);
+
+        Console.WriteLine("MarketScoresDaily保存完了");
+    }
 }
 
 // ==============================
