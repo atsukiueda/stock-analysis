@@ -13,7 +13,8 @@ using StockAnalysis.Batch.Services;
 
 const bool RUN_FINANCIAL_IMPORT = false;
 const bool RUN_PRICE_IMPORT = false;
-const bool RUN_MARKET_INDEX_IMPORT = true;
+const bool RUN_MARKET_INDEX_IMPORT = false;
+const bool RUN_USDJPY_IMPORT = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -54,6 +55,12 @@ Console.WriteLine("Azure SQL Databaseへ接続確認中...");
 var companyCount = await db.Companies.CountAsync();
 
 Console.WriteLine($"Companies件数: {companyCount}");
+
+var alphaVantageApiKey =
+    configuration["AlphaVantage:ApiKey"];
+
+Console.WriteLine(
+    $"Alpha Vantage API Key Length: {alphaVantageApiKey?.Length}");
 
 // ==============================
 // API通信用 HttpClient
@@ -166,6 +173,41 @@ if (RUN_MARKET_INDEX_IMPORT)
     await SaveTopixAsync(db, topixItems);
 
     Console.WriteLine("MarketIndicesDaily保存完了");
+}
+
+// ==============================
+// USDJPY数取得
+// ==============================
+
+if (RUN_USDJPY_IMPORT)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== USDJPY取得開始 ===");
+
+    var fxService = new AlphaVantageFxService(
+        httpClient,
+        configuration);
+
+    var usdJpyItems = await fxService.GetUsdJpyDailyAsync();
+
+    Console.WriteLine($"USDJPY取得件数: {usdJpyItems.Count}");
+
+    foreach (var item in usdJpyItems.Take(5))
+    {
+        Console.WriteLine(
+            $"{item.Key} " +
+            $"{item.Value.Close}");
+    }
+
+    Console.WriteLine(
+    "MarketIndicesDailyへ保存中...");
+
+    await SaveUsdJpyAsync(
+        db,
+        usdJpyItems);
+
+    Console.WriteLine(
+        "USDJPY保存完了");
 }
 
 // ==============================
@@ -340,6 +382,77 @@ static async Task SaveTopixAsync(
             index.LowValue = item.Low;
             index.CloseValue = item.Close;
             index.Source = "J-Quants";
+            index.UpdatedAt = now;
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+// ==============================
+// USDJPY保存
+// ==============================
+
+static async Task SaveUsdJpyAsync(
+    StockAnalysisDbContext db,
+    Dictionary<string, AlphaVantageFxDailyDto> usdJpyItems)
+{
+    var now = DateTime.Now;
+
+    foreach (var item in usdJpyItems)
+    {
+        var tradeDate =
+            DateTime.Parse(item.Key);
+
+        var index =
+            await db.MarketIndicesDaily.FindAsync(
+                "USDJPY",
+                tradeDate);
+
+        var open =
+            ParseDecimal(item.Value.Open);
+
+        var high =
+            ParseDecimal(item.Value.High);
+
+        var low =
+            ParseDecimal(item.Value.Low);
+
+        var close =
+            ParseDecimal(item.Value.Close);
+
+        if (index == null)
+        {
+            db.MarketIndicesDaily.Add(
+                new MarketIndexDaily
+                {
+                    IndexCode = "USDJPY",
+                    IndexName = "USD/JPY",
+
+                    TradeDate = tradeDate,
+
+                    OpenValue = open,
+                    HighValue = high,
+                    LowValue = low,
+                    CloseValue = close,
+
+                    Volume = null,
+
+                    Source = "AlphaVantage",
+
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+        else
+        {
+            index.OpenValue = open;
+            index.HighValue = high;
+            index.LowValue = low;
+            index.CloseValue = close;
+
+            index.Source = "AlphaVantage";
+
             index.UpdatedAt = now;
         }
     }
