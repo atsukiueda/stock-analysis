@@ -18,7 +18,8 @@ const bool RUN_USDJPY_IMPORT = false;
 const bool RUN_SP500_IMPORT = false;
 const bool RUN_NASDAQ_IMPORT = false;
 const bool RUN_VIX_IMPORT = false;
-const bool RUN_MARKET_SCORE_CALCULATION = true;
+const bool RUN_MARKET_SCORE_CALCULATION = false;
+const bool RUN_MARKET_SCORE_HISTORY = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -800,6 +801,25 @@ static async Task SaveVixAsync(
     }
 
     await db.SaveChangesAsync();
+}
+
+// ==============================
+// 市場スコア履歴保存
+// ==============================
+
+if (RUN_MARKET_SCORE_HISTORY)
+{
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== 市場スコア履歴作成開始 ===");
+
+    var marketScoreService =
+        new MarketScoreService(db);
+
+    await marketScoreService.GenerateAllAsync();
+
+    Console.WriteLine(
+        "市場スコア履歴作成完了");
 }
 
 // ==============================

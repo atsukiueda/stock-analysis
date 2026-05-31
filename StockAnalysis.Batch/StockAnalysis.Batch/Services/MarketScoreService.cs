@@ -15,66 +15,16 @@ public class MarketScoreService
 
     public async Task<MarketScoreDaily?> CalculateLatestAsync()
     {
-        var latestTopix = await GetLatestIndexAsync("TOPIX");
+        var latestTopix =
+            await GetLatestIndexAsync("TOPIX");
 
         if (latestTopix == null)
         {
             return null;
         }
 
-        var scoreDate = latestTopix.TradeDate;
-
-        var topixScore = await CalculateTopixTrendScoreAsync(scoreDate);
-        var sp500Score = await CalculateSp500TrendScoreAsync(scoreDate);
-        var nasdaqScore = await CalculateNasdaqTrendScoreAsync(scoreDate);
-        var usdJpyScore = await CalculateUsdJpyScoreAsync(scoreDate);
-        var vixScore = await CalculateVixScoreAsync(scoreDate);
-        var topixMomentumScore = await CalculateTopixMomentumScoreAsync(scoreDate);
-
-        var totalScore =
-            topixScore +
-            sp500Score +
-            nasdaqScore +
-            usdJpyScore +
-            vixScore +
-            topixMomentumScore;
-
-        var regime = totalScore switch
-        {
-            >= 80 => "StrongRiskOn",
-            >= 60 => "RiskOn",
-            >= 40 => "Neutral",
-            >= 20 => "RiskOff",
-            _ => "StrongRiskOff"
-        };
-
-        var now = DateTime.Now;
-
-        return new MarketScoreDaily
-        {
-            ScoreDate = scoreDate,
-
-            TopixTrendScore = topixScore,
-            Sp500TrendScore = sp500Score,
-            NasdaqTrendScore = nasdaqScore,
-            UsdJpyScore = usdJpyScore,
-            VixScore = vixScore,
-            TopixMomentumScore = topixMomentumScore,
-
-            TotalScore = totalScore,
-            MarketRegime = regime,
-
-            Comment =
-                $"TOPIX:{topixScore}, " +
-                $"SP500:{sp500Score}, " +
-                $"NASDAQ:{nasdaqScore}, " +
-                $"USDJPY:{usdJpyScore}, " +
-                $"VIX:{vixScore}, " +
-                $"TOPIX Momentum:{topixMomentumScore}",
-
-            CreatedAt = now,
-            UpdatedAt = now
-        };
+        return await CalculateAsync(
+            latestTopix.TradeDate);
     }
 
     public async Task SaveAsync(MarketScoreDaily score)
@@ -352,5 +302,91 @@ public class MarketScoreService
         }
 
         return closes.Average();
+    }
+
+    public async Task GenerateAllAsync()
+    {
+        var scoreDates =
+            await _db.MarketIndicesDaily
+                .Where(x => x.IndexCode == "TOPIX")
+                .Select(x => x.TradeDate)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToListAsync();
+
+        Console.WriteLine(
+            $"対象日数: {scoreDates.Count}");
+
+        foreach (var scoreDate in scoreDates)
+        {
+            var score =
+                await CalculateAsync(scoreDate);
+
+            if (score == null)
+            {
+                continue;
+            }
+
+            await SaveAsync(score);
+        }
+    }
+
+    public async Task<MarketScoreDaily?> CalculateAsync(
+    DateTime scoreDate)
+    {
+        var topixScore =
+            await CalculateTopixTrendScoreAsync(scoreDate);
+
+        var sp500Score =
+            await CalculateSp500TrendScoreAsync(scoreDate);
+
+        var nasdaqScore =
+            await CalculateNasdaqTrendScoreAsync(scoreDate);
+
+        var usdJpyScore =
+            await CalculateUsdJpyScoreAsync(scoreDate);
+
+        var vixScore =
+            await CalculateVixScoreAsync(scoreDate);
+
+        var topixMomentumScore =
+            await CalculateTopixMomentumScoreAsync(scoreDate);
+
+        var totalScore =
+            topixScore +
+            sp500Score +
+            nasdaqScore +
+            usdJpyScore +
+            vixScore +
+            topixMomentumScore;
+
+        var regime = totalScore switch
+        {
+            >= 80 => "StrongRiskOn",
+            >= 60 => "RiskOn",
+            >= 40 => "Neutral",
+            >= 20 => "RiskOff",
+            _ => "StrongRiskOff"
+        };
+
+        var now = DateTime.Now;
+
+        return new MarketScoreDaily
+        {
+            ScoreDate = scoreDate,
+
+            TopixTrendScore = topixScore,
+            Sp500TrendScore = sp500Score,
+            NasdaqTrendScore = nasdaqScore,
+            UsdJpyScore = usdJpyScore,
+            VixScore = vixScore,
+            TopixMomentumScore = topixMomentumScore,
+
+            TotalScore = totalScore,
+            MarketRegime = regime,
+
+            CreatedAt = now,
+            UpdatedAt = now
+        };
     }
 }
