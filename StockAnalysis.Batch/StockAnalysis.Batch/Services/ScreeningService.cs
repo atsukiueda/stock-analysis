@@ -80,6 +80,7 @@ public class ScreeningService
                     CompanyName = x.Company.CompanyName,
 
                     FinancialScore = x.Score.FinancialScore,
+                    GrowthScore = x.Score.GrowthScore,
                     TechnicalScore = x.Score.TechnicalScore,
                     MarketScore = x.Score.MarketScore,
                     MarketRegimeBonus = bonus,

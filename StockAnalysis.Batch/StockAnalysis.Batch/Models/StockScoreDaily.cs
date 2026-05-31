@@ -12,6 +12,8 @@ public class StockScoreDaily
 
     public int TotalScore { get; set; }
 
+    public int GrowthScore { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

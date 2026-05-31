@@ -8,6 +8,8 @@
 
     public int FinancialScore { get; set; }
 
+    public int GrowthScore { get; set; }
+
     public int TechnicalScore { get; set; }
 
     public int MarketScore { get; set; }

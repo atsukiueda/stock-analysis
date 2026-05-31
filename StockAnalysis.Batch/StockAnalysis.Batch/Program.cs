@@ -399,6 +399,7 @@ if (RUN_SCREENING)
             $"{item.CompanyName} " +
             $"Total:{item.TotalScore} " +
             $"F:{item.FinancialScore} " +
+            $"G:{item.GrowthScore} " +
             $"T:{item.TechnicalScore} " +
             $"B:{item.MarketRegimeBonus} " +
             $"M:{item.MarketScore}");
@@ -897,7 +898,7 @@ if (RUN_STOCK_SCORE_CALCULATION)
             $"{score.Code} {score.ScoreDate:yyyy-MM-dd} Total:{score.TotalScore}");
 
         Console.WriteLine(
-            $"Financial:{score.FinancialScore}, Technical:{score.TechnicalScore}, Market:{score.MarketScore}");
+            $"Financial:{score.FinancialScore}, Growth:{score.GrowthScore}, Technical:{score.TechnicalScore}, Market:{score.MarketScore}");
 
         await stockScoreService.SaveAsync(score);
 

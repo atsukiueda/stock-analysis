@@ -28,11 +28,13 @@ public class StockScoreService
         var scoreDate = latestPrice.TradeDate;
 
         var financialScore = await CalculateFinancialScoreAsync(code);
+        var growthScore = await CalculateGrowthScoreAsync(code);
         var technicalScore = await CalculateTechnicalScoreAsync(code, scoreDate);
         var marketScore = await CalculateMarketScoreAsync(scoreDate);
 
         var totalScore =
             financialScore +
+            growthScore +
             technicalScore +
             marketScore;
 
@@ -44,6 +46,7 @@ public class StockScoreService
             ScoreDate = scoreDate,
 
             FinancialScore = financialScore,
+            GrowthScore = growthScore,
             TechnicalScore = technicalScore,
             MarketScore = marketScore,
 
@@ -67,6 +70,7 @@ public class StockScoreService
         else
         {
             existing.FinancialScore = score.FinancialScore;
+            existing.GrowthScore = score.GrowthScore;
             existing.TechnicalScore = score.TechnicalScore;
             existing.MarketScore = score.MarketScore;
             existing.TotalScore = score.TotalScore;
@@ -266,5 +270,73 @@ public class StockScoreService
         }
 
         return closes.Average();
+    }
+
+    private async Task<int> CalculateGrowthScoreAsync(string code)
+    {
+        var statements = await _db.FinancialStatements
+            .Where(x => x.Code == code)
+            .Where(x => x.TypeOfDocument != null)
+            .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
+            .Where(x => x.NetSales != null)
+            .Where(x => x.OperatingProfit != null)
+            .OrderByDescending(x => x.DisclosedDate)
+            .Take(2)
+            .ToListAsync();
+
+        if (statements.Count < 2)
+        {
+            return 0;
+        }
+
+        var latest = statements[0];
+        var previous = statements[1];
+
+        var salesGrowthRate = CalculateGrowthRate(
+            latest.NetSales,
+            previous.NetSales);
+
+        var operatingProfitGrowthRate = CalculateGrowthRate(
+            latest.OperatingProfit,
+            previous.OperatingProfit);
+
+        var score = 0;
+
+        score += ToGrowthPoint(salesGrowthRate);
+        score += ToGrowthPoint(operatingProfitGrowthRate);
+
+        return score;
+    }
+
+    private static decimal CalculateGrowthRate(
+        decimal? current,
+        decimal? previous)
+    {
+        if (current == null || previous == null)
+        {
+            return 0;
+        }
+
+        if (previous <= 0)
+        {
+            return 0;
+        }
+
+        return ((current.Value - previous.Value) / previous.Value) * 100m;
+    }
+
+    private static int ToGrowthPoint(decimal growthRate)
+    {
+        if (growthRate >= 20m)
+        {
+            return 10;
+        }
+
+        if (growthRate >= 10m)
+        {
+            return 5;
+        }
+
+        return 0;
     }
 }
