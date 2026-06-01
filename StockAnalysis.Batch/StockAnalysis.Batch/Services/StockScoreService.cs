@@ -337,12 +337,12 @@ public class StockScoreService
 
     private static int ToGrowthPoint(decimal growthRate)
     {
-        if (growthRate >= 20m)
+        if (growthRate >= 50m)
         {
             return 10;
         }
 
-        if (growthRate >= 10m)
+        if (growthRate >= 20m)
         {
             return 5;
         }
