@@ -31,10 +31,12 @@ public class StockScoreService
         var growthScore = await CalculateGrowthScoreAsync(code);
         var technicalScore = await CalculateTechnicalScoreAsync(code, scoreDate);
         var marketScore = await CalculateMarketScoreAsync(scoreDate);
+        var dividendScore = await CalculateDividendScoreAsync(code);
 
         var totalScore =
             financialScore +
             growthScore +
+            dividendScore +
             technicalScore +
             marketScore;
 
@@ -49,8 +51,8 @@ public class StockScoreService
             GrowthScore = growthScore,
             TechnicalScore = technicalScore,
             MarketScore = marketScore,
-
             TotalScore = totalScore,
+            DividendScore = dividendScore,
 
             CreatedAt = now,
             UpdatedAt = now
@@ -74,6 +76,7 @@ public class StockScoreService
             existing.TechnicalScore = score.TechnicalScore;
             existing.MarketScore = score.MarketScore;
             existing.TotalScore = score.TotalScore;
+            existing.DividendScore = score.DividendScore;
             existing.UpdatedAt = DateTime.Now;
         }
 
@@ -348,5 +351,78 @@ public class StockScoreService
         }
 
         return 0;
+    }
+
+    private static int ToDividendPoint(decimal dividendYield)
+    {
+        if (dividendYield >= 5m)
+        {
+            return 20;
+        }
+
+        if (dividendYield >= 4m)
+        {
+            return 15;
+        }
+
+        if (dividendYield >= 3m)
+        {
+            return 10;
+        }
+
+        if (dividendYield >= 2m)
+        {
+            return 5;
+        }
+
+        return 0;
+    }
+
+    private async Task<int> CalculateDividendScoreAsync(string code)
+    {
+        var financial = await _db.FinancialStatements
+            .Where(x => x.Code == code)
+            .Where(x => x.TypeOfDocument != null)
+            .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
+            .OrderByDescending(x => x.DisclosedDate)
+            .FirstOrDefaultAsync();
+
+        if (financial == null)
+        {
+            return 0;
+        }
+
+        var latestPrice = await _db.PricesDaily
+            .Where(x => x.Code == code)
+            .Where(x => x.ClosePrice != null)
+            .OrderByDescending(x => x.TradeDate)
+            .FirstOrDefaultAsync();
+
+        if (latestPrice == null)
+        {
+            return 0;
+        }
+
+        if (latestPrice.ClosePrice == null ||
+            latestPrice.ClosePrice <= 0)
+        {
+            return 0;
+        }
+
+        var dividendPerShare =
+            financial.ForecastDividendPerShareAnnual
+            ?? financial.ResultDividendPerShareAnnual;
+
+        if (dividendPerShare == null)
+        {
+            return 0;
+        }
+
+        var dividendYield =
+            dividendPerShare.Value
+            / latestPrice.ClosePrice.Value
+            * 100m;
+
+        return ToDividendPoint(dividendYield);
     }
 }

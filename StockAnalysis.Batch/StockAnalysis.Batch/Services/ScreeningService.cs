@@ -84,6 +84,7 @@ public class ScreeningService
                     TechnicalScore = x.Score.TechnicalScore,
                     MarketScore = x.Score.MarketScore,
                     MarketRegimeBonus = bonus,
+                    DividendScore = x.Score.DividendScore,
 
                     TotalScore = x.Score.TotalScore + bonus
                 };

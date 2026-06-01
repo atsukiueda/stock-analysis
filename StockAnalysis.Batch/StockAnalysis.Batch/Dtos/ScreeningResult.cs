@@ -15,4 +15,6 @@
     public int MarketScore { get; set; }
 
     public int MarketRegimeBonus { get; set; }
+
+    public int DividendScore { get; set; }
 }
