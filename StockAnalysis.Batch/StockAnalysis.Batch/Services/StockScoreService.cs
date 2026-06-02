@@ -32,11 +32,13 @@ public class StockScoreService
         var technicalScore = await CalculateTechnicalScoreAsync(code, scoreDate);
         var marketScore = await CalculateMarketScoreAsync(scoreDate);
         var dividendScore = await CalculateDividendScoreAsync(code);
+        var roeScore = await CalculateRoeScoreAsync(code);
 
         var totalScore =
             financialScore +
             growthScore +
             dividendScore +
+            roeScore +
             technicalScore +
             marketScore;
 
@@ -53,6 +55,7 @@ public class StockScoreService
             MarketScore = marketScore,
             TotalScore = totalScore,
             DividendScore = dividendScore,
+            RoeScore = roeScore,
 
             CreatedAt = now,
             UpdatedAt = now
@@ -77,6 +80,7 @@ public class StockScoreService
             existing.MarketScore = score.MarketScore;
             existing.TotalScore = score.TotalScore;
             existing.DividendScore = score.DividendScore;
+            existing.RoeScore = score.RoeScore;
             existing.UpdatedAt = DateTime.Now;
         }
 
@@ -424,5 +428,63 @@ public class StockScoreService
             * 100m;
 
         return ToDividendPoint(dividendYield);
+    }
+
+    private async Task<int> CalculateRoeScoreAsync(string code)
+    {
+        var financial = await _db.FinancialStatements
+            .Where(x => x.Code == code)
+            .Where(x => x.TypeOfDocument != null)
+            .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
+            .OrderByDescending(x => x.DisclosedDate)
+            .FirstOrDefaultAsync();
+
+        if (financial == null)
+        {
+            return 0;
+        }
+
+        if (financial.EarningsPerShare == null ||
+            financial.BookValuePerShare == null)
+        {
+            return 0;
+        }
+
+        if (financial.BookValuePerShare <= 0)
+        {
+            return 0;
+        }
+
+        var roe =
+            financial.EarningsPerShare.Value
+            / financial.BookValuePerShare.Value
+            * 100m;
+
+        return ToRoePoint(roe);
+    }
+
+    private static int ToRoePoint(decimal roe)
+    {
+        if (roe >= 15m)
+        {
+            return 20;
+        }
+
+        if (roe >= 10m)
+        {
+            return 15;
+        }
+
+        if (roe >= 8m)
+        {
+            return 10;
+        }
+
+        if (roe >= 5m)
+        {
+            return 5;
+        }
+
+        return 0;
     }
 }

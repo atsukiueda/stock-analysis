@@ -21,10 +21,10 @@ const bool RUN_VIX_IMPORT = false;
 const bool RUN_MARKET_SCORE_CALCULATION = false;
 const bool RUN_MARKET_SCORE_HISTORY = false;
 const bool RUN_STOCK_SCORE_CALCULATION = false;
-const bool RUN_ALL_STOCK_SCORE = false;
+const bool RUN_ALL_STOCK_SCORE = true;
 const bool RUN_PRICE_IMPORT_100 = false;
 const bool RUN_FINANCIAL_IMPORT_100 = false;
-const bool RUN_SCREENING = true;
+const bool RUN_SCREENING = false;
 
 // ==============================
 // appsettings.json 読み込み
@@ -401,6 +401,7 @@ if (RUN_SCREENING)
             $"F:{item.FinancialScore} " +
             $"G:{item.GrowthScore} " +
             $"D:{item.DividendScore} " +
+            $"R:{item.RoeScore} " +
             $"T:{item.TechnicalScore} " +
             $"B:{item.MarketRegimeBonus} " +
             $"M:{item.MarketScore}");
@@ -899,7 +900,7 @@ if (RUN_STOCK_SCORE_CALCULATION)
             $"{score.Code} {score.ScoreDate:yyyy-MM-dd} Total:{score.TotalScore}");
 
         Console.WriteLine(
-            $"Financial:{score.FinancialScore}, Growth:{score.GrowthScore}, Dividend:{score.DividendScore}, Technical:{score.TechnicalScore}, Market:{score.MarketScore}");
+            $"Financial:{score.FinancialScore}, Growth:{score.GrowthScore}, Dividend:{score.DividendScore}, ROE:{score.RoeScore}, Technical:{score.TechnicalScore}, Market:{score.MarketScore}");
 
         await stockScoreService.SaveAsync(score);
 
