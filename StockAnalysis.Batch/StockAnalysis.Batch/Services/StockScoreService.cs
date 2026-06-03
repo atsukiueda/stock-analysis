@@ -33,12 +33,14 @@ public class StockScoreService
         var marketScore = await CalculateMarketScoreAsync(scoreDate);
         var dividendScore = await CalculateDividendScoreAsync(code);
         var roeScore = await CalculateRoeScoreAsync(code);
+        var perScore = await CalculatePerScoreAsync(code);
 
         var totalScore =
             financialScore +
             growthScore +
             dividendScore +
             roeScore +
+            perScore +
             technicalScore +
             marketScore;
 
@@ -56,6 +58,7 @@ public class StockScoreService
             TotalScore = totalScore,
             DividendScore = dividendScore,
             RoeScore = roeScore,
+            PerScore = perScore,
 
             CreatedAt = now,
             UpdatedAt = now
@@ -81,6 +84,7 @@ public class StockScoreService
             existing.TotalScore = score.TotalScore;
             existing.DividendScore = score.DividendScore;
             existing.RoeScore = score.RoeScore;
+            existing.PerScore = score.PerScore;
             existing.UpdatedAt = DateTime.Now;
         }
 
@@ -481,6 +485,71 @@ public class StockScoreService
         }
 
         if (roe >= 5m)
+        {
+            return 5;
+        }
+
+        return 0;
+    }
+
+    private async Task<int> CalculatePerScoreAsync(
+    string code)
+    {
+        var financial = await _db.FinancialStatements
+            .Where(x => x.Code == code)
+            .Where(x => x.TypeOfDocument != null)
+            .Where(x => x.TypeOfDocument.StartsWith(
+                "FYFinancialStatements"))
+            .OrderByDescending(x => x.DisclosedDate)
+            .FirstOrDefaultAsync();
+
+        if (financial == null)
+        {
+            return 0;
+        }
+
+        if (financial.EarningsPerShare == null ||
+            financial.EarningsPerShare <= 0)
+        {
+            return 0;
+        }
+
+        var latestPrice = await _db.PricesDaily
+            .Where(x => x.Code == code)
+            .Where(x => x.ClosePrice != null)
+            .OrderByDescending(x => x.TradeDate)
+            .FirstOrDefaultAsync();
+
+        if (latestPrice == null)
+        {
+            return 0;
+        }
+
+        var per =
+            latestPrice.ClosePrice.Value
+            / financial.EarningsPerShare.Value;
+
+        return ToPerPoint(per);
+    }
+
+    private static int ToPerPoint(decimal per)
+    {
+        if (per <= 10m)
+        {
+            return 20;
+        }
+
+        if (per <= 15m)
+        {
+            return 15;
+        }
+
+        if (per <= 20m)
+        {
+            return 10;
+        }
+
+        if (per <= 30m)
         {
             return 5;
         }

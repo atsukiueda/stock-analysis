@@ -86,6 +86,7 @@ public class ScreeningService
                     MarketRegimeBonus = bonus,
                     DividendScore = x.Score.DividendScore,
                     RoeScore = x.Score.RoeScore,
+                    PerScore = x.Score.PerScore,
 
                     TotalScore = x.Score.TotalScore + bonus
                 };

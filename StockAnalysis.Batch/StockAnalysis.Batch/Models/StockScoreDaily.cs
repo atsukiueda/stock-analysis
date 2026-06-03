@@ -19,4 +19,6 @@ public class StockScoreDaily
     public int DividendScore { get; set; }
 
     public int RoeScore { get; set; }
+
+    public int PerScore { get; set; }
 }
