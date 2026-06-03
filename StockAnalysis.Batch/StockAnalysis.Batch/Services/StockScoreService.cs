@@ -536,20 +536,15 @@ public class StockScoreService
     {
         if (per <= 10m)
         {
-            return 20;
+            return 15;
         }
 
         if (per <= 15m)
         {
-            return 15;
-        }
-
-        if (per <= 20m)
-        {
             return 10;
         }
 
-        if (per <= 30m)
+        if (per <= 20m)
         {
             return 5;
         }
