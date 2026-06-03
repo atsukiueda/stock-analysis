@@ -118,8 +118,7 @@ public class StockScoreService
         }
     }
 
-    private async Task<int> CalculateFinancialScoreAsync(
-    string code)
+    private async Task<int> CalculateFinancialScoreAsync(string code)
     {
         var financial = await _db.FinancialStatements
             .Where(x => x.Code == code)
