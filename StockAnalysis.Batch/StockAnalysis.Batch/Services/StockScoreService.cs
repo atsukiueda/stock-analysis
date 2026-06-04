@@ -34,6 +34,7 @@ public class StockScoreService
         var dividendScore = await CalculateDividendScoreAsync(code);
         var roeScore = await CalculateRoeScoreAsync(code);
         var perScore = await CalculatePerScoreAsync(code);
+        var pbrScore = await CalculatePbrScoreAsync(code);
 
         var totalScore =
             financialScore +
@@ -41,6 +42,7 @@ public class StockScoreService
             dividendScore +
             roeScore +
             perScore +
+            pbrScore +
             technicalScore +
             marketScore;
 
@@ -59,6 +61,7 @@ public class StockScoreService
             DividendScore = dividendScore,
             RoeScore = roeScore,
             PerScore = perScore,
+            PbrScore = pbrScore,
 
             CreatedAt = now,
             UpdatedAt = now
@@ -85,6 +88,7 @@ public class StockScoreService
             existing.DividendScore = score.DividendScore;
             existing.RoeScore = score.RoeScore;
             existing.PerScore = score.PerScore;
+            existing.PbrScore = score.PbrScore;
             existing.UpdatedAt = DateTime.Now;
         }
 
@@ -544,6 +548,62 @@ public class StockScoreService
         }
 
         if (per <= 20m)
+        {
+            return 5;
+        }
+
+        return 0;
+    }
+
+    private async Task<int> CalculatePbrScoreAsync(string code)
+    {
+        var financial = await _db.FinancialStatements
+            .Where(x => x.Code == code)
+            .Where(x => x.BookValuePerShare != null)
+            .OrderByDescending(x => x.DisclosedDate)
+            .FirstOrDefaultAsync();
+
+        if (financial == null)
+        {
+            return 0;
+        }
+
+        if (financial.BookValuePerShare <= 0)
+        {
+            return 0;
+        }
+
+        var latestPrice = await _db.PricesDaily
+            .Where(x => x.Code == code)
+            .Where(x => x.ClosePrice != null)
+            .OrderByDescending(x => x.TradeDate)
+            .FirstOrDefaultAsync();
+
+        if (latestPrice == null)
+        {
+            return 0;
+        }
+
+        var pbr =
+            latestPrice.ClosePrice.Value
+            / financial.BookValuePerShare.Value;
+
+        return ToPbrPoint(pbr);
+    }
+
+    private static int ToPbrPoint(decimal pbr)
+    {
+        if (pbr <= 1m)
+        {
+            return 15;
+        }
+
+        if (pbr <= 2m)
+        {
+            return 10;
+        }
+
+        if (pbr <= 3m)
         {
             return 5;
         }

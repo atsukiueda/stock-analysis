@@ -21,4 +21,6 @@
     public int RoeScore { get; set; }
 
     public int PerScore { get; set; }
+
+    public int PbrScore { get; set; }
 }
