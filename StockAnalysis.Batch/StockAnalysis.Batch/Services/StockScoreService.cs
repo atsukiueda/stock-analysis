@@ -35,6 +35,7 @@ public class StockScoreService
         var roeScore = await CalculateRoeScoreAsync(code);
         var perScore = await CalculatePerScoreAsync(code);
         var pbrScore = await CalculatePbrScoreAsync(code);
+        var swingScore = await CalculateSwingScoreAsync(code, scoreDate);
 
         var totalScore =
             financialScore +
@@ -62,6 +63,7 @@ public class StockScoreService
             RoeScore = roeScore,
             PerScore = perScore,
             PbrScore = pbrScore,
+            SwingScore = swingScore,
 
             CreatedAt = now,
             UpdatedAt = now
@@ -89,6 +91,7 @@ public class StockScoreService
             existing.RoeScore = score.RoeScore;
             existing.PerScore = score.PerScore;
             existing.PbrScore = score.PbrScore;
+            existing.SwingScore = score.SwingScore;
             existing.UpdatedAt = DateTime.Now;
         }
 
@@ -609,5 +612,96 @@ public class StockScoreService
         }
 
         return 0;
+    }
+
+    private async Task<int> CalculateSwingScoreAsync(
+    string code,
+    DateTime scoreDate)
+    {
+        var prices = await _db.PricesDaily
+            .Where(x => x.Code == code)
+            .Where(x => x.TradeDate <= scoreDate)
+            .Where(x => x.ClosePrice != null)
+            .OrderByDescending(x => x.TradeDate)
+            .Take(30)
+            .ToListAsync();
+
+        if (prices.Count < 25)
+        {
+            return 0;
+        }
+
+        var latest = prices[0];
+        var price5DaysAgo = prices[4];
+
+        if (latest.ClosePrice == null ||
+            price5DaysAgo.ClosePrice == null ||
+            price5DaysAgo.ClosePrice <= 0)
+        {
+            return 0;
+        }
+
+        var score = 0;
+
+        // 既存TechnicalScoreを短期売買にも利用する。
+        score += await CalculateTechnicalScoreAsync(code, scoreDate);
+
+        // 地合いスコアも短期売買に利用する。
+        score += await CalculateMarketScoreAsync(scoreDate);
+
+        // 5日モメンタム：最大20点
+        var momentum5 =
+            (latest.ClosePrice.Value - price5DaysAgo.ClosePrice.Value)
+            / price5DaysAgo.ClosePrice.Value
+            * 100m;
+
+        if (momentum5 >= 10m)
+        {
+            score += 20;
+        }
+        else if (momentum5 >= 5m)
+        {
+            score += 15;
+        }
+        else if (momentum5 >= 2m)
+        {
+            score += 10;
+        }
+        else if (momentum5 > 0m)
+        {
+            score += 5;
+        }
+
+        // 25日移動平均との乖離率：最大15点
+        var ma25 =
+            prices
+                .Take(25)
+                .Average(x => x.ClosePrice!.Value);
+
+        if (ma25 > 0)
+        {
+            var divergence25 =
+                (latest.ClosePrice.Value - ma25)
+                / ma25
+                * 100m;
+
+            if (divergence25 >= 0m &&
+                divergence25 <= 5m)
+            {
+                score += 15;
+            }
+            else if (divergence25 > 5m &&
+                     divergence25 <= 10m)
+            {
+                score += 10;
+            }
+            else if (divergence25 > 10m &&
+                     divergence25 <= 15m)
+            {
+                score += 5;
+            }
+        }
+
+        return score;
     }
 }

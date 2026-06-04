@@ -23,4 +23,6 @@ public class StockScoreDaily
     public int PerScore { get; set; }
 
     public int PbrScore { get; set; }
+
+    public int SwingScore { get; set; }
 }
