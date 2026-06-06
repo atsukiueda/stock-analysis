@@ -623,10 +623,10 @@ public class StockScoreService
             .Where(x => x.TradeDate <= scoreDate)
             .Where(x => x.ClosePrice != null)
             .OrderByDescending(x => x.TradeDate)
-            .Take(30)
+            .Take(90)
             .ToListAsync();
 
-        if (prices.Count < 25)
+        if (prices.Count < 75)
         {
             return 0;
         }
@@ -719,6 +719,52 @@ public class StockScoreService
             .Where(x => x.Volume != null)
             .Average(x => (decimal)x.Volume!.Value);
 
+        // 75日移動平均上スコア：最大10点
+        var ma75 =
+            prices
+                .Take(75)
+                .Average(x => x.ClosePrice!.Value);
+
+        if (latest.ClosePrice.Value > ma75)
+        {
+            score += 10;
+        }
+
+        // 25日移動平均上向きスコア：最大10点
+        var currentMa25 =
+            prices
+                .Take(25)
+                .Average(x => x.ClosePrice!.Value);
+
+        var pastMa25 =
+            prices
+                .Skip(5)
+                .Take(25)
+                .Average(x => x.ClosePrice!.Value);
+
+        if (currentMa25 > pastMa25)
+        {
+            score += 10;
+        }
+
+        // 25日高値更新スコア：最大10点
+        var latestHigh =
+            latest.HighPrice;
+
+        var pastHigh25List = prices
+            .Skip(1)
+            .Take(25)
+            .Where(x => x.HighPrice != null)
+            .Select(x => x.HighPrice!.Value)
+            .ToList();
+
+        if (latestHigh != null &&
+            pastHigh25List.Count > 0 &&
+            latestHigh.Value >= pastHigh25List.Max())
+        {
+            score += 10;
+        }
+
         // 出来高増加スコア：最大15点
         if (latest.Volume != null)
         {
@@ -786,6 +832,10 @@ public class StockScoreService
             }
         }
 
-        return score;
+        var normalizedScore =
+            (int)Math.Round(
+                score / 120m * 100m);
+
+        return normalizedScore;
     }
 }
