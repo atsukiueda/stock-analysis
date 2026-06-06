@@ -13,10 +13,21 @@ public class StockScoreService
         _db = db;
     }
 
-    public async Task<StockScoreDaily?> CalculateAsync(string code)
+    public async Task<StockScoreDaily?> CalculateAsync(
+    string code,
+    DateTime? targetDate = null)
     {
-        var latestPrice = await _db.PricesDaily
-            .Where(x => x.Code == code && x.ClosePrice != null)
+        var latestPriceQuery = _db.PricesDaily
+            .Where(x => x.Code == code)
+            .Where(x => x.ClosePrice != null);
+
+        if (targetDate.HasValue)
+        {
+            latestPriceQuery = latestPriceQuery
+                .Where(x => x.TradeDate <= targetDate.Value);
+        }
+
+        var latestPrice = await latestPriceQuery
             .OrderByDescending(x => x.TradeDate)
             .FirstOrDefaultAsync();
 
@@ -27,15 +38,32 @@ public class StockScoreService
 
         var scoreDate = latestPrice.TradeDate;
 
-        var financialScore = await CalculateFinancialScoreAsync(code);
-        var growthScore = await CalculateGrowthScoreAsync(code);
-        var technicalScore = await CalculateTechnicalScoreAsync(code, scoreDate);
-        var marketScore = await CalculateMarketScoreAsync(scoreDate);
-        var dividendScore = await CalculateDividendScoreAsync(code);
-        var roeScore = await CalculateRoeScoreAsync(code);
-        var perScore = await CalculatePerScoreAsync(code);
-        var pbrScore = await CalculatePbrScoreAsync(code);
-        var swingScore = await CalculateSwingScoreAsync(code, scoreDate);
+        var financialScore =
+            await CalculateFinancialScoreAsync(code, scoreDate);
+
+        var growthScore =
+            await CalculateGrowthScoreAsync(code, scoreDate);
+
+        var dividendScore =
+            await CalculateDividendScoreAsync(code, scoreDate);
+
+        var roeScore =
+            await CalculateRoeScoreAsync(code, scoreDate);
+
+        var perScore =
+            await CalculatePerScoreAsync(code, scoreDate);
+
+        var pbrScore =
+            await CalculatePbrScoreAsync(code, scoreDate);
+
+        var technicalScore =
+            await CalculateTechnicalScoreAsync(code, scoreDate);
+
+        var marketScore =
+            await CalculateMarketScoreAsync(scoreDate);
+
+        var swingScore =
+            await CalculateSwingScoreAsync(code, scoreDate);
 
         var totalScore =
             financialScore +
@@ -56,14 +84,15 @@ public class StockScoreService
 
             FinancialScore = financialScore,
             GrowthScore = growthScore,
-            TechnicalScore = technicalScore,
-            MarketScore = marketScore,
-            TotalScore = totalScore,
             DividendScore = dividendScore,
             RoeScore = roeScore,
             PerScore = perScore,
             PbrScore = pbrScore,
+            TechnicalScore = technicalScore,
             SwingScore = swingScore,
+            MarketScore = marketScore,
+
+            TotalScore = totalScore,
 
             CreatedAt = now,
             UpdatedAt = now
@@ -125,10 +154,14 @@ public class StockScoreService
         }
     }
 
-    private async Task<int> CalculateFinancialScoreAsync(string code)
+    private async Task<int> CalculateFinancialScoreAsync(
+    string code,
+    DateTime scoreDate)
     {
         var financial = await _db.FinancialStatements
             .Where(x => x.Code == code)
+            .Where(x => x.DisclosedDate != null)
+            .Where(x => x.DisclosedDate <= scoreDate)
             .Where(x =>
                 x.NetSales != null &&
                 x.OperatingProfit != null &&
@@ -145,15 +178,15 @@ public class StockScoreService
         var score = 0;
 
         // 売上高スコア：最大15点
-        if (financial.NetSales >= 1_000_000_000_000m) // 1兆円以上
+        if (financial.NetSales >= 1_000_000_000_000m)
         {
             score += 15;
         }
-        else if (financial.NetSales >= 100_000_000_000m) // 1000億円以上
+        else if (financial.NetSales >= 100_000_000_000m)
         {
             score += 10;
         }
-        else if (financial.NetSales >= 10_000_000_000m) // 100億円以上
+        else if (financial.NetSales >= 10_000_000_000m)
         {
             score += 5;
         }
@@ -202,8 +235,10 @@ public class StockScoreService
         var priceCount = await _db.PricesDaily
             .Where(x =>
                 x.Code == code &&
+                x.TradeDate <= scoreDate &&
                 x.ClosePrice != null)
             .CountAsync();
+
         if (priceCount < 200)
         {
             Console.WriteLine(
@@ -293,10 +328,14 @@ public class StockScoreService
         return closes.Average();
     }
 
-    private async Task<int> CalculateGrowthScoreAsync(string code)
+    private async Task<int> CalculateGrowthScoreAsync(
+    string code,
+    DateTime scoreDate)
     {
         var statements = await _db.FinancialStatements
             .Where(x => x.Code == code)
+            .Where(x => x.DisclosedDate != null)
+            .Where(x => x.DisclosedDate <= scoreDate)
             .Where(x => x.TypeOfDocument != null)
             .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
             .Where(x => x.NetSales != null)
@@ -392,10 +431,14 @@ public class StockScoreService
         return 0;
     }
 
-    private async Task<int> CalculateDividendScoreAsync(string code)
+    private async Task<int> CalculateDividendScoreAsync(
+    string code,
+    DateTime scoreDate)
     {
         var financial = await _db.FinancialStatements
             .Where(x => x.Code == code)
+            .Where(x => x.DisclosedDate != null)
+            .Where(x => x.DisclosedDate <= scoreDate)
             .Where(x => x.TypeOfDocument != null)
             .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
             .OrderByDescending(x => x.DisclosedDate)
@@ -408,6 +451,7 @@ public class StockScoreService
 
         var latestPrice = await _db.PricesDaily
             .Where(x => x.Code == code)
+            .Where(x => x.TradeDate <= scoreDate)
             .Where(x => x.ClosePrice != null)
             .OrderByDescending(x => x.TradeDate)
             .FirstOrDefaultAsync();
@@ -440,10 +484,14 @@ public class StockScoreService
         return ToDividendPoint(dividendYield);
     }
 
-    private async Task<int> CalculateRoeScoreAsync(string code)
+    private async Task<int> CalculateRoeScoreAsync(
+    string code,
+    DateTime scoreDate)
     {
         var financial = await _db.FinancialStatements
             .Where(x => x.Code == code)
+            .Where(x => x.DisclosedDate != null)
+            .Where(x => x.DisclosedDate <= scoreDate)
             .Where(x => x.TypeOfDocument != null)
             .Where(x => x.TypeOfDocument.StartsWith("FYFinancialStatements"))
             .OrderByDescending(x => x.DisclosedDate)
@@ -499,10 +547,13 @@ public class StockScoreService
     }
 
     private async Task<int> CalculatePerScoreAsync(
-    string code)
+    string code,
+    DateTime scoreDate)
     {
         var financial = await _db.FinancialStatements
             .Where(x => x.Code == code)
+            .Where(x => x.DisclosedDate != null)
+            .Where(x => x.DisclosedDate <= scoreDate)
             .Where(x => x.TypeOfDocument != null)
             .Where(x => x.TypeOfDocument.StartsWith(
                 "FYFinancialStatements"))
@@ -522,6 +573,7 @@ public class StockScoreService
 
         var latestPrice = await _db.PricesDaily
             .Where(x => x.Code == code)
+            .Where(x => x.TradeDate <= scoreDate)
             .Where(x => x.ClosePrice != null)
             .OrderByDescending(x => x.TradeDate)
             .FirstOrDefaultAsync();
@@ -558,10 +610,14 @@ public class StockScoreService
         return 0;
     }
 
-    private async Task<int> CalculatePbrScoreAsync(string code)
+    private async Task<int> CalculatePbrScoreAsync(
+    string code,
+    DateTime scoreDate)
     {
         var financial = await _db.FinancialStatements
             .Where(x => x.Code == code)
+            .Where(x => x.DisclosedDate != null)
+            .Where(x => x.DisclosedDate <= scoreDate)
             .Where(x => x.BookValuePerShare != null)
             .OrderByDescending(x => x.DisclosedDate)
             .FirstOrDefaultAsync();
@@ -578,6 +634,7 @@ public class StockScoreService
 
         var latestPrice = await _db.PricesDaily
             .Where(x => x.Code == code)
+            .Where(x => x.TradeDate <= scoreDate)
             .Where(x => x.ClosePrice != null)
             .OrderByDescending(x => x.TradeDate)
             .FirstOrDefaultAsync();
@@ -711,14 +768,6 @@ public class StockScoreService
             }
         }
 
-        var latestVolume = latest.Volume;
-
-        var averageVolume25 = prices
-            .Skip(1)
-            .Take(25)
-            .Where(x => x.Volume != null)
-            .Average(x => (decimal)x.Volume!.Value);
-
         // 75日移動平均上スコア：最大10点
         var ma75 =
             prices
@@ -837,5 +886,62 @@ public class StockScoreService
                 score / 120m * 100m);
 
         return normalizedScore;
+    }
+
+    public async Task GenerateHistoryAsync(
+    DateTime startDate,
+    DateTime endDate)
+    {
+        var tradeDates = await _db.PricesDaily
+            .Where(x => x.TradeDate >= startDate)
+            .Where(x => x.TradeDate <= endDate)
+            .Where(x => x.ClosePrice != null)
+            .Select(x => x.TradeDate)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToListAsync();
+
+        var codes = await _db.PricesDaily
+            .Where(x => x.TradeDate >= startDate)
+            .Where(x => x.TradeDate <= endDate)
+            .Where(x => x.ClosePrice != null)
+            .Select(x => x.Code)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToListAsync();
+
+        Console.WriteLine($"対象日数: {tradeDates.Count}");
+        Console.WriteLine($"対象銘柄数: {codes.Count}");
+
+        foreach (var tradeDate in tradeDates)
+        {
+            Console.WriteLine($"=== {tradeDate:yyyy-MM-dd} のスコア生成開始 ===");
+
+            foreach (var code in codes)
+            {
+                var existsPrice = await _db.PricesDaily
+                    .AnyAsync(x =>
+                        x.Code == code &&
+                        x.TradeDate == tradeDate &&
+                        x.ClosePrice != null);
+
+                if (!existsPrice)
+                {
+                    continue;
+                }
+
+                var score =
+                    await CalculateAsync(code, tradeDate);
+
+                if (score == null)
+                {
+                    continue;
+                }
+
+                await SaveAsync(score);
+            }
+
+            Console.WriteLine($"=== {tradeDate:yyyy-MM-dd} のスコア生成完了 ===");
+        }
     }
 }

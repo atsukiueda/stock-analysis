@@ -26,6 +26,7 @@ const bool RUN_PRICE_IMPORT_100 = false;
 const bool RUN_FINANCIAL_IMPORT_100 = false;
 const bool RUN_SCREENING = false;
 const bool RUN_SWING_ADVICE = false;
+const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = true;
 
 // ==============================
@@ -1118,6 +1119,21 @@ if (RUN_SWING_ADVICE)
 // ==============================
 // ML学習データ生成
 // ==============================
+
+if (RUN_STOCK_SCORE_HISTORY)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== 株式スコア履歴生成開始 ===");
+
+    var stockScoreService =
+        new StockScoreService(db);
+
+    await stockScoreService.GenerateHistoryAsync(
+        new DateTime(2026, 5, 1),
+        new DateTime(2026, 5, 20));
+
+    Console.WriteLine("=== 株式スコア履歴生成完了 ===");
+}
 
 if (RUN_ML_TRAINING_DATA_GENERATION)
 {
