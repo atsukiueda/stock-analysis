@@ -14,4 +14,6 @@ public class ScreeningCondition
     public int? MinMarketScore { get; set; }
 
     public string? MarketName { get; set; }
+
+    public int? MinSwingScore { get; set; }
 }

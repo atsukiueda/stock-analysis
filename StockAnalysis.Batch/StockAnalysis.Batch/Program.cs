@@ -21,10 +21,10 @@ const bool RUN_VIX_IMPORT = false;
 const bool RUN_MARKET_SCORE_CALCULATION = false;
 const bool RUN_MARKET_SCORE_HISTORY = false;
 const bool RUN_STOCK_SCORE_CALCULATION = false;
-const bool RUN_ALL_STOCK_SCORE = true;
+const bool RUN_ALL_STOCK_SCORE = false;
 const bool RUN_PRICE_IMPORT_100 = false;
 const bool RUN_FINANCIAL_IMPORT_100 = false;
-const bool RUN_SCREENING = false;
+const bool RUN_SCREENING = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -393,7 +393,9 @@ if (RUN_SCREENING)
         await service.GetTopStocksAsync(
             new ScreeningCondition
             {
-                TopCount = 20
+                TopCount = 20,
+                MinSwingScore = 60,
+                MinTechnicalScore = 20
             });
 
     foreach (var item in results)
@@ -406,6 +408,7 @@ if (RUN_SCREENING)
             $"D:{item.DividendScore} " +
             $"R:{item.RoeScore} " +
             $"P:{item.PerScore} " +
+            $"S:{item.SwingScore} " +
             $"T:{item.TechnicalScore} " +
             $"B:{item.MarketRegimeBonus} " +
             $"M:{item.MarketScore}");

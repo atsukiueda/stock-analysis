@@ -121,6 +121,12 @@ public class ScreeningService
                 x.Company.MarketName == condition.MarketName);
         }
 
+        if (condition.MinSwingScore.HasValue)
+        {
+            query = query.Where(x =>
+                x.Score.SwingScore >= condition.MinSwingScore.Value);
+        }
+
         var sourceItems =
             await query.ToListAsync();
 
@@ -145,6 +151,7 @@ public class ScreeningService
                     TechnicalScore = x.Score.TechnicalScore,
                     MarketScore = x.Score.MarketScore,
                     MarketRegimeBonus = bonus,
+                    SwingScore = x.Score.SwingScore,
 
                     TotalScore = x.Score.TotalScore + bonus
                 };
