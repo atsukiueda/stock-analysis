@@ -671,6 +671,15 @@ public class StockScoreService
         {
             score += 5;
         }
+        // 急騰ペナルティ
+        if (momentum5 >= 20m)
+        {
+            score -= 10;
+        }
+        else if (momentum5 >= 15m)
+        {
+            score -= 5;
+        }
 
         // 25日移動平均との乖離率：最大15点
         var ma25 =
@@ -699,6 +708,81 @@ public class StockScoreService
                      divergence25 <= 15m)
             {
                 score += 5;
+            }
+        }
+
+        var latestVolume = latest.Volume;
+
+        var averageVolume25 = prices
+            .Skip(1)
+            .Take(25)
+            .Where(x => x.Volume != null)
+            .Average(x => (decimal)x.Volume!.Value);
+
+        // 出来高増加スコア：最大15点
+        if (latest.Volume != null)
+        {
+            var volumeList = prices
+                .Skip(1)
+                .Take(25)
+                .Where(x => x.Volume != null)
+                .Select(x => (decimal)x.Volume!.Value)
+                .ToList();
+
+            if (volumeList.Count > 0)
+            {
+                var averageVolume =
+                    volumeList.Average();
+
+                if (averageVolume > 0)
+                {
+                    var volumeRatio =
+                        latest.Volume.Value
+                        / averageVolume;
+
+                    if (volumeRatio >= 2m)
+                    {
+                        score += 15;
+                    }
+                    else if (volumeRatio >= 1.5m)
+                    {
+                        score += 10;
+                    }
+                    else if (volumeRatio >= 1.2m)
+                    {
+                        score += 5;
+                    }
+                }
+            }
+        }
+
+        // 高値更新スコア：最大10点
+
+        var recentHighList = prices
+            .Take(5)
+            .Where(x => x.HighPrice != null)
+            .Select(x => x.HighPrice!.Value)
+            .ToList();
+
+        var pastHighList = prices
+            .Skip(5)
+            .Take(25)
+            .Where(x => x.HighPrice != null)
+            .Select(x => x.HighPrice!.Value)
+            .ToList();
+
+        if (recentHighList.Count > 0 &&
+            pastHighList.Count > 0)
+        {
+            var recentHigh =
+                recentHighList.Max();
+
+            var pastHigh =
+                pastHighList.Max();
+
+            if (recentHigh > pastHigh)
+            {
+                score += 10;
             }
         }
 
