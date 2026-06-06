@@ -163,4 +163,73 @@ public class ScreeningService
 
         return results;
     }
+
+    public async Task<List<SwingTradeAdvice>> GetSwingTradeAdvicesAsync(
+    int topCount = 10)
+    {
+        var latestDate =
+            await _db.StockScoresDaily
+                .MaxAsync(x => x.ScoreDate);
+
+        var sourceItems = await _db.StockScoresDaily
+            .Where(x => x.ScoreDate == latestDate)
+            .Where(x => x.SwingScore >= 60)
+            .Where(x => x.TechnicalScore >= 20)
+            .Join(
+                _db.Companies,
+                score => score.Code,
+                company => company.Code,
+                (score, company) => new
+                {
+                    Score = score,
+                    Company = company
+                })
+            .OrderByDescending(x => x.Score.SwingScore)
+            .Take(topCount)
+            .ToListAsync();
+
+        var results = new List<SwingTradeAdvice>();
+
+        foreach (var item in sourceItems)
+        {
+            var latestPrice = await _db.PricesDaily
+                .Where(x => x.Code == item.Score.Code)
+                .Where(x => x.TradeDate <= latestDate)
+                .Where(x => x.ClosePrice != null)
+                .OrderByDescending(x => x.TradeDate)
+                .FirstOrDefaultAsync();
+
+            if (latestPrice == null ||
+                latestPrice.ClosePrice == null ||
+                latestPrice.ClosePrice <= 0)
+            {
+                continue;
+            }
+
+            var entryPrice =
+                latestPrice.ClosePrice.Value;
+
+            var takeProfitPrice =
+                Math.Round(entryPrice * 1.05m, 2);
+
+            var stopLossPrice =
+                Math.Round(entryPrice * 0.97m, 2);
+
+            results.Add(new SwingTradeAdvice
+            {
+                Code = item.Score.Code,
+                CompanyName = item.Company.CompanyName,
+                TradeDate = latestPrice.TradeDate,
+                EntryPrice = entryPrice,
+                TakeProfitPrice = takeProfitPrice,
+                StopLossPrice = stopLossPrice,
+                SwingScore = item.Score.SwingScore,
+                Comment =
+                    $"SwingScore {item.Score.SwingScore}. " +
+                    $"終値付近でのエントリー想定。利確目安+5%、損切目安-3%。"
+            });
+        }
+
+        return results;
+    }
 }

@@ -24,7 +24,8 @@ const bool RUN_STOCK_SCORE_CALCULATION = false;
 const bool RUN_ALL_STOCK_SCORE = false;
 const bool RUN_PRICE_IMPORT_100 = false;
 const bool RUN_FINANCIAL_IMPORT_100 = false;
-const bool RUN_SCREENING = true;
+const bool RUN_SCREENING = false;
+const bool RUN_SWING_ADVICE = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -1076,6 +1077,35 @@ if (RUN_FINANCIAL_IMPORT_100)
     }
 
     Console.WriteLine("100銘柄 財務情報取得完了");
+}
+
+// ==============================
+// スイング売買アドバイス
+// ==============================
+
+if (RUN_SWING_ADVICE)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== スイング売買アドバイス ===");
+
+    var service =
+        new ScreeningService(db);
+
+    var advices =
+        await service.GetSwingTradeAdvicesAsync(10);
+
+    foreach (var item in advices)
+    {
+        Console.WriteLine(
+            $"{item.Code} {item.CompanyName} " +
+            $"Date:{item.TradeDate:yyyy-MM-dd} " +
+            $"Swing:{item.SwingScore} " +
+            $"Entry:{item.EntryPrice:N2} " +
+            $"TP:{item.TakeProfitPrice:N2} " +
+            $"SL:{item.StopLossPrice:N2}");
+
+        Console.WriteLine($"  {item.Comment}");
+    }
 }
 
 // ==============================
