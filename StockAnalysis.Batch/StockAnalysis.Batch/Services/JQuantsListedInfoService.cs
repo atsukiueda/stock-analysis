@@ -54,15 +54,36 @@ public class JQuantsListedInfoResponse
 
 public class JQuantsListedInfo
 {
+    [JsonPropertyName("Date")]
+    public string Date { get; set; } = string.Empty;
+
     [JsonPropertyName("Code")]
     public string Code { get; set; } = string.Empty;
 
-    [JsonPropertyName("CompanyName")]
+    [JsonPropertyName("CoName")]
     public string CompanyName { get; set; } = string.Empty;
 
-    [JsonPropertyName("MarketCodeName")]
+    [JsonPropertyName("CoNameEn")]
+    public string? CompanyNameEnglish { get; set; }
+
+    [JsonPropertyName("S17")]
+    public string? Sector17Code { get; set; }
+
+    [JsonPropertyName("S17Nm")]
+    public string? Sector17Name { get; set; }
+
+    [JsonPropertyName("S33")]
+    public string? Sector33Code { get; set; }
+
+    [JsonPropertyName("S33Nm")]
+    public string? Sector33Name { get; set; }
+
+    [JsonPropertyName("Mkt")]
+    public string? MarketCode { get; set; }
+
+    [JsonPropertyName("MktNm")]
     public string? MarketName { get; set; }
 
-    [JsonPropertyName("Sector33CodeName")]
-    public string? Sector33Name { get; set; }
+    [JsonPropertyName("ScaleCat")]
+    public string? ScaleCategory { get; set; }
 }
