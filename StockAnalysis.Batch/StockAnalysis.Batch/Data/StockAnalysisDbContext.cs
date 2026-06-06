@@ -20,6 +20,8 @@ public class StockAnalysisDbContext : DbContext
 
     public DbSet<StockScoreDaily> StockScoresDaily => Set<StockScoreDaily>();
 
+    public DbSet<MlTrainingData> MlTrainingData => Set<MlTrainingData>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Company>(entity =>
@@ -62,6 +64,18 @@ public class StockAnalysisDbContext : DbContext
                     e.Code,
                     e.ScoreDate
                 });
+        });
+
+        modelBuilder.Entity<MlTrainingData>(entity =>
+        {
+            entity.ToTable("MlTrainingData");
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new
+            {
+                e.Code,
+                e.TradeDate
+            }).IsUnique();
         });
     }
 }
