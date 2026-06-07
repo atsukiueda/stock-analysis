@@ -1,6 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
+using static System.Formats.Asn1.AsnWriter;
 
 namespace StockAnalysis.Batch.Services;
 
@@ -24,6 +26,21 @@ public class MlTrainingDataService
 
         foreach (var score in scores)
         {
+            var company = await _db.Companies
+                .FirstOrDefaultAsync(x => x.Code == score.Code);
+
+            if (company == null)
+            {
+                continue;
+            }
+
+            if (company.CompanyName.Contains("ＥＴＦ") ||
+                company.CompanyName.Contains("ETF") ||
+                company.CompanyName.Contains("投信"))
+            {
+                continue;
+            }
+
             var basePrice = await _db.PricesDaily
                 .Where(x => x.Code == score.Code)
                 .Where(x => x.TradeDate == score.ScoreDate)
@@ -68,6 +85,56 @@ public class MlTrainingDataService
                 basePrice.ClosePrice,
                 future20?.ClosePrice);
 
+            decimal? futureMaxReturn10 = null;
+            decimal? futureMinReturn10 = null;
+
+            var future10Prices = futurePrices
+                .Take(10)
+                .ToList();
+
+            if (future10Prices.Count == 10)
+            {
+                var maxHigh10 = future10Prices
+                    .Where(x => x.HighPrice != null)
+                    .Max(x => x.HighPrice);
+
+                var minLow10 = future10Prices
+                    .Where(x => x.LowPrice != null)
+                    .Min(x => x.LowPrice);
+
+                if (maxHigh10 != null)
+                {
+                    futureMaxReturn10 =
+                        Math.Round(
+                            (maxHigh10.Value - basePrice.ClosePrice.Value)
+                            / basePrice.ClosePrice.Value
+                            * 100m,
+                            4);
+                }
+
+                if (futureMaxReturn10 != null)
+                {
+                    futureMaxReturn10 =
+                        Math.Min(futureMaxReturn10.Value, 50m);
+                }
+
+                if (minLow10 != null)
+                {
+                    futureMinReturn10 =
+                        Math.Round(
+                            (minLow10.Value - basePrice.ClosePrice.Value)
+                            / basePrice.ClosePrice.Value
+                            * 100m,
+                            4);
+                }
+
+                if (futureMinReturn10 != null)
+                {
+                    futureMinReturn10 =
+                        Math.Max(futureMinReturn10.Value, -30m);
+                }
+            }
+
             var existing = await _db.MlTrainingData
                 .FirstOrDefaultAsync(x =>
                     x.Code == score.Code &&
@@ -97,6 +164,8 @@ public class MlTrainingDataService
                     Up5 = futureReturn5 >= 3m,
                     Up10 = futureReturn10 >= 5m,
                     Up20 = futureReturn20 >= 8m,
+                    FutureMaxReturn10 = futureMaxReturn10,
+                    FutureMinReturn10 = futureMinReturn10,
 
                     CreatedAt = DateTime.Now
                 });

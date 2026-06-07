@@ -22,6 +22,10 @@ public class MlTrainingData
     public decimal? FutureReturn10 { get; set; }
     public decimal? FutureReturn20 { get; set; }
 
+    public decimal? FutureMaxReturn10 { get; set; }
+
+    public decimal? FutureMinReturn10 { get; set; }
+
     public bool Up5 { get; set; }
     public bool Up10 { get; set; }
     public bool Up20 { get; set; }

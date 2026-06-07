@@ -67,6 +67,13 @@ public class ScreeningService
                     Company = company
                 });
 
+        query = query.Where(x =>
+            !x.Company.CompanyName.Contains("ＥＴＦ") &&
+            !x.Company.CompanyName.Contains("ETF") &&
+            !x.Company.CompanyName.Contains("投信") &&
+            !x.Company.CompanyName.Contains("ＮＥＸＴ　ＦＵＮＤＳ") &&
+            !x.Company.CompanyName.Contains("インデックスファンド"));
+
         if (condition.MinFinancialScore.HasValue)
         {
             query = query.Where(x =>
@@ -130,6 +137,26 @@ public class ScreeningService
         var sourceItems =
             await query.ToListAsync();
 
+        var up5Service = new MlUp5PredictionService(_db);
+
+        var up5ProbabilityMap =
+            await up5Service.PredictLatestProbabilitiesAsync();
+
+        var up10Service = new MlUp10PredictionService(_db);
+
+        var up10ProbabilityMap =
+            await up10Service.PredictLatestUp10ProbabilitiesAsync();
+
+        var takeProfitService = new MlTakeProfitPredictionService(_db);
+
+        var takeProfitMap =
+            await takeProfitService.PredictLatestTakeProfitAsync();
+
+        var stopLossService = new MlStopLossPredictionService(_db);
+
+        var stopLossMap =
+            await stopLossService.PredictLatestStopLossAsync();
+
         var results = sourceItems
             .Select(x =>
             {
@@ -137,10 +164,60 @@ public class ScreeningService
                     x.Company.MarketName,
                     latestMarket.MarketRegime ?? "");
 
+                var up5Probability = up5ProbabilityMap.TryGetValue(
+                    x.Score.Code,
+                    out var up5)
+                    ? up5
+                    : 0m;
+
+                var up10Probability = up10ProbabilityMap.TryGetValue(
+                    x.Score.Code,
+                    out var up10)
+                    ? up10
+                    : 0m;
+
+                var expectedTakeProfit = takeProfitMap.TryGetValue(
+                    x.Score.Code,
+                    out var tp)
+                    ? tp
+                    : 0m;
+
+                var expectedStopLoss = stopLossMap.TryGetValue(
+                    x.Score.Code,
+                    out var sl)
+                    ? sl
+                    : 0m;
+
+                var latestPrice = _db.PricesDaily
+                    .Where(p => p.Code == x.Score.Code)
+                    .Where(p => p.TradeDate == x.Score.ScoreDate)
+                    .Select(p => p.ClosePrice)
+                    .FirstOrDefault();
+
+                var entryPrice = latestPrice ?? 0m;
+
+                var clippedTakeProfit = Math.Clamp(
+                    expectedTakeProfit,
+                    3m,
+                    20m);
+
+                var clippedStopLoss = Math.Clamp(
+                    expectedStopLoss,
+                    -15m,
+                    -3m);
+
                 return new ScreeningResult
                 {
                     Code = x.Score.Code,
                     CompanyName = x.Company.CompanyName,
+                    Up5Probability = up5Probability,
+
+                    Up10Probability = up10Probability,
+
+                    AiRankingScore =
+                        (up5Probability * 0.6m)
+                        + (up10Probability * 0.4m)
+                        + ((x.Score.TotalScore + bonus) * 0.5m),
 
                     FinancialScore = x.Score.FinancialScore,
                     GrowthScore = x.Score.GrowthScore,
@@ -153,11 +230,26 @@ public class ScreeningService
                     MarketRegimeBonus = bonus,
                     SwingScore = x.Score.SwingScore,
 
-                    TotalScore = x.Score.TotalScore + bonus
+                    TotalScore = x.Score.TotalScore + bonus,
+
+                    ExpectedTakeProfit = expectedTakeProfit,
+
+                    ExpectedStopLoss = expectedStopLoss,
+
+                    EntryPrice = entryPrice,
+
+                    TakeProfitPrice = entryPrice > 0
+                        ? Math.Round(entryPrice * (1 + clippedTakeProfit / 100m), 2)
+                        : 0m,
+
+                                        StopLossPrice = entryPrice > 0
+                        ? Math.Round(entryPrice * (1 + clippedStopLoss / 100m), 2)
+                        : 0m,
                 };
             })
-            .OrderByDescending(x => x.TotalScore)
-            .ThenByDescending(x => x.FinancialScore)
+            .OrderByDescending(x => x.AiRankingScore)
+            .ThenByDescending(x => x.Up5Probability)
+            .ThenByDescending(x => x.TotalScore)
             .Take(condition.TopCount)
             .ToList();
 

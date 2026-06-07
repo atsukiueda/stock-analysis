@@ -24,10 +24,14 @@ const bool RUN_STOCK_SCORE_CALCULATION = false;
 const bool RUN_ALL_STOCK_SCORE = false;
 const bool RUN_PRICE_IMPORT_100 = false;
 const bool RUN_FINANCIAL_IMPORT_100 = false;
-const bool RUN_SCREENING = false;
 const bool RUN_SWING_ADVICE = false;
 const bool RUN_STOCK_SCORE_HISTORY = false;
-const bool RUN_ML_TRAINING_DATA_GENERATION = true;
+const bool RUN_ML_TRAINING_DATA_GENERATION = false;
+const bool RUN_ML_UP5_TRAINING = false;
+const bool RUN_ML_UP10_TRAINING = false;
+const bool RUN_SCREENING = true;
+const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
+const bool RUN_ML_STOP_LOSS_TRAINING = false;
 
 // ==============================
 // appsettings.json 読み込み
@@ -406,15 +410,16 @@ if (RUN_SCREENING)
         Console.WriteLine(
             $"{item.Code} " +
             $"{item.CompanyName} " +
-            $"F:{item.FinancialScore} " +
-            $"G:{item.GrowthScore} " +
-            $"D:{item.DividendScore} " +
-            $"R:{item.RoeScore} " +
-            $"P:{item.PerScore} " +
-            $"S:{item.SwingScore} " +
-            $"T:{item.TechnicalScore} " +
-            $"B:{item.MarketRegimeBonus} " +
-            $"M:{item.MarketScore}");
+            $"AiRank:{item.AiRankingScore:F2} " +
+            $"Up5:{item.Up5Probability:F2}% " +
+            $"Up10:{item.Up10Probability:F2}% " +
+            $"TP:{item.ExpectedTakeProfit:F2}% " +
+            $"SL:{item.ExpectedStopLoss:F2}% " +
+            $"Entry:{item.EntryPrice:F2} " +
+            $"TakeProfit:{item.TakeProfitPrice:F2} " +
+            $"StopLoss:{item.StopLossPrice:F2} " +
+            $"Total:{item.TotalScore} " +
+            $"Swing:{item.SwingScore}");
     }
 }
 
@@ -1129,8 +1134,8 @@ if (RUN_STOCK_SCORE_HISTORY)
         new StockScoreService(db);
 
     await stockScoreService.GenerateHistoryAsync(
-        new DateTime(2026, 5, 1),
-        new DateTime(2026, 5, 20));
+        new DateTime(2026, 4, 1),
+        new DateTime(2026, 5, 29));
 
     Console.WriteLine("=== 株式スコア履歴生成完了 ===");
 }
@@ -1146,6 +1151,71 @@ if (RUN_ML_TRAINING_DATA_GENERATION)
     await service.GenerateAsync();
 
     Console.WriteLine("=== ML学習データ生成終了 ===");
+}
+
+// ==============================
+// up5学習
+// ==============================
+
+if (RUN_ML_UP5_TRAINING)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== Up5 ML.NET 学習開始 ===");
+
+    var service = new MlUp5PredictionService(db);
+
+    await service.TrainAndEvaluateAsync();
+
+    Console.WriteLine("=== Up5 ML.NET 学習終了 ===");
+}
+
+// ==============================
+// up10学習
+// ==============================
+
+if (RUN_ML_UP10_TRAINING)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== Up10 ML.NET 学習開始 ===");
+
+    var service = new MlUp10PredictionService(db);
+
+    await service.TrainAndEvaluateAsync();
+
+    Console.WriteLine("=== Up10 ML.NET 学習終了 ===");
+}
+
+// ==============================
+// 利益確定学習
+// ==============================
+
+if (RUN_ML_TAKE_PROFIT_TRAINING)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== TakeProfit ML.NET 学習開始 ===");
+
+    var service = new MlTakeProfitPredictionService(db);
+
+    await service.TrainAndEvaluateAsync();
+
+    Console.WriteLine("=== TakeProfit ML.NET 学習終了 ===");
+}
+
+// ==============================
+// 損切学習
+// ==============================
+
+
+if (RUN_ML_STOP_LOSS_TRAINING)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== StopLoss ML.NET 学習開始 ===");
+
+    var service = new MlStopLossPredictionService(db);
+
+    await service.TrainAndEvaluateAsync();
+
+    Console.WriteLine("=== StopLoss ML.NET 学習終了 ===");
 }
 
 // ==============================

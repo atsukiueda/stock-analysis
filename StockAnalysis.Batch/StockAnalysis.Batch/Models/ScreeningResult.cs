@@ -25,4 +25,20 @@
     public int PbrScore { get; set; }
 
     public int SwingScore { get; set; }
+
+    public decimal Up5Probability { get; set; }
+
+    public decimal AiRankingScore { get; set; }
+
+    public decimal Up10Probability { get; set; }
+
+    public decimal ExpectedTakeProfit { get; set; }
+
+    public decimal ExpectedStopLoss { get; set; }
+
+    public decimal EntryPrice { get; set; }
+
+    public decimal TakeProfitPrice { get; set; }
+
+    public decimal StopLossPrice { get; set; }
 }
