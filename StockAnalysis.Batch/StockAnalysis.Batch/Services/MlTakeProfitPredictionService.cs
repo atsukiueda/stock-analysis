@@ -15,6 +15,14 @@ public class MlTakeProfitPredictionService
 
     private readonly MLContext _mlContext;
 
+    private readonly Dictionary<DateTime, MarketFeatureValues> _marketFeatureCache = new();
+
+    private readonly Dictionary<string, TechnicalFeatureValues?> _technicalFeatureCache = new();
+
+    private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
+
+    private readonly Dictionary<string, List<MarketIndexDaily>> _marketIndexHistoryCache = new();
+
     public MlTakeProfitPredictionService(StockAnalysisDbContext db)
     {
         _db = db;
@@ -364,14 +372,12 @@ public class MlTakeProfitPredictionService
         string code,
         DateTime tradeDate)
     {
-        var prices = await _db.PricesDaily
-            .Where(x => x.Code == code)
+        var allPrices = await GetPriceHistoryWithCacheAsync(code);
+
+        var prices = allPrices
             .Where(x => x.TradeDate <= tradeDate)
-            .Where(x => x.ClosePrice != null)
-            .OrderByDescending(x => x.TradeDate)
-            .Take(80)
-            .OrderBy(x => x.TradeDate)
-            .ToListAsync();
+            .TakeLast(80)
+            .ToList();
 
         if (prices.Count < 80)
         {
@@ -449,6 +455,26 @@ public class MlTakeProfitPredictionService
         };
     }
 
+    private async Task<TechnicalFeatureValues?> GetTechnicalFeaturesWithCacheAsync(
+    string code,
+    DateTime tradeDate)
+    {
+        var key = $"{code}_{tradeDate:yyyyMMdd}";
+
+        if (_technicalFeatureCache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var technicalFeatures = await CalculateTechnicalFeaturesAsync(
+            code,
+            tradeDate);
+
+        _technicalFeatureCache[key] = technicalFeatures;
+
+        return technicalFeatures;
+    }
+
     private async Task<MarketFeatureValues> CalculateMarketFeaturesAsync(
         DateTime tradeDate)
     {
@@ -462,18 +488,31 @@ public class MlTakeProfitPredictionService
         };
     }
 
-    private async Task<float> CalculateMarketMomentum25Async(
-        string indexName,
-        DateTime tradeDate)
+    private async Task<MarketFeatureValues> GetMarketFeaturesWithCacheAsync(
+    DateTime tradeDate)
     {
-        var prices = await _db.MarketIndicesDaily
-            .Where(x => x.IndexName == indexName)
+        if (_marketFeatureCache.TryGetValue(tradeDate, out var cached))
+        {
+            return cached;
+        }
+
+        var marketFeatures = await CalculateMarketFeaturesAsync(tradeDate);
+
+        _marketFeatureCache[tradeDate] = marketFeatures;
+
+        return marketFeatures;
+    }
+
+    private async Task<float> CalculateMarketMomentum25Async(
+    string indexName,
+    DateTime tradeDate)
+    {
+        var allPrices = await GetMarketIndexHistoryWithCacheAsync(indexName);
+
+        var prices = allPrices
             .Where(x => x.TradeDate <= tradeDate)
-            .Where(x => x.CloseValue != null)
-            .OrderByDescending(x => x.TradeDate)
-            .Take(25)
-            .OrderBy(x => x.TradeDate)
-            .ToListAsync();
+            .TakeLast(25)
+            .ToList();
 
         if (prices.Count < 25)
         {
@@ -520,7 +559,7 @@ public class MlTakeProfitPredictionService
 
         foreach (var score in latestScoreRows)
         {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
+            var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
                 score.Code,
                 score.ScoreDate);
 
@@ -565,5 +604,120 @@ public class MlTakeProfitPredictionService
         }
 
         return result;
+    }
+
+    private ITransformer? _loadedModel;
+    private PredictionEngine<MlTakeProfitInput, MlTakeProfitOutput>? _predictionEngine;
+
+    private ITransformer GetOrLoadModel()
+    {
+        if (_loadedModel != null)
+        {
+            return _loadedModel;
+        }
+
+        var modelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "Models",
+            "takeprofit-model.zip");
+
+        if (!File.Exists(modelPath))
+        {
+            throw new FileNotFoundException(
+                $"TakeProfitモデルが見つかりません: {modelPath}");
+        }
+
+        _loadedModel = _mlContext.Model.Load(modelPath, out _);
+
+        return _loadedModel;
+    }
+
+    public async Task<decimal?> PredictAsync(StockScoreDaily score)
+    {
+        var model = GetOrLoadModel();
+
+        _predictionEngine ??=
+            _mlContext.Model.CreatePredictionEngine<MlTakeProfitInput, MlTakeProfitOutput>(model);
+
+        var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
+            score.Code,
+            score.ScoreDate);
+
+        if (technicalFeatures == null)
+        {
+            return null;
+        }
+
+        var marketFeatures = await GetMarketFeaturesWithCacheAsync(score.ScoreDate);
+
+        var input = new MlTakeProfitInput
+        {
+            FinancialScore = score.FinancialScore,
+            GrowthScore = score.GrowthScore,
+            DividendScore = score.DividendScore,
+            RoeScore = score.RoeScore,
+            PerScore = score.PerScore,
+            PbrScore = score.PbrScore,
+            TechnicalScore = score.TechnicalScore,
+            SwingScore = score.SwingScore,
+            MarketScore = score.MarketScore,
+
+            Momentum5 = technicalFeatures.Momentum5,
+            Momentum25 = technicalFeatures.Momentum25,
+            DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
+            VolumeRatio5 = technicalFeatures.VolumeRatio5,
+            ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
+            Ma25Slope = technicalFeatures.Ma25Slope,
+            Ma75Slope = technicalFeatures.Ma75Slope,
+
+            TopixMomentum25 = marketFeatures.TopixMomentum25,
+            Sp500Momentum25 = marketFeatures.Sp500Momentum25,
+            NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
+            UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
+            VixMomentum25 = marketFeatures.VixMomentum25
+        };
+
+        var prediction = _predictionEngine.Predict(input);
+
+        return Math.Max(
+            0m,
+            Math.Round((decimal)prediction.Score, 4));
+    }
+
+    private async Task<List<PriceDaily>> GetPriceHistoryWithCacheAsync(string code)
+    {
+        if (_priceHistoryCache.TryGetValue(code, out var cached))
+        {
+            return cached;
+        }
+
+        var prices = await _db.PricesDaily
+            .Where(x => x.Code == code)
+            .Where(x => x.ClosePrice != null)
+            .OrderBy(x => x.TradeDate)
+            .ToListAsync();
+
+        _priceHistoryCache[code] = prices;
+
+        return prices;
+    }
+
+    private async Task<List<MarketIndexDaily>> GetMarketIndexHistoryWithCacheAsync(
+    string indexName)
+    {
+        if (_marketIndexHistoryCache.TryGetValue(indexName, out var cached))
+        {
+            return cached;
+        }
+
+        var prices = await _db.MarketIndicesDaily
+            .Where(x => x.IndexName == indexName)
+            .Where(x => x.CloseValue != null)
+            .OrderBy(x => x.TradeDate)
+            .ToListAsync();
+
+        _marketIndexHistoryCache[indexName] = prices;
+
+        return prices;
     }
 }

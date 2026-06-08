@@ -29,9 +29,10 @@ const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP5_TRAINING = false;
 const bool RUN_ML_UP10_TRAINING = false;
-const bool RUN_SCREENING = true;
+const bool RUN_SCREENING = false;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
+const bool RUN_BACKTEST = true;
 
 // ==============================
 // appsettings.json 読み込み
@@ -1134,8 +1135,8 @@ if (RUN_STOCK_SCORE_HISTORY)
         new StockScoreService(db);
 
     await stockScoreService.GenerateHistoryAsync(
-        new DateTime(2026, 4, 1),
-        new DateTime(2026, 5, 29));
+        new DateTime(2025, 1, 1),
+        new DateTime(2025, 12, 31));
 
     Console.WriteLine("=== 株式スコア履歴生成完了 ===");
 }
@@ -1216,6 +1217,25 @@ if (RUN_ML_STOP_LOSS_TRAINING)
     await service.TrainAndEvaluateAsync();
 
     Console.WriteLine("=== StopLoss ML.NET 学習終了 ===");
+}
+
+// ==============================
+// バックテスト
+// ==============================
+
+if (RUN_BACKTEST)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== バックテスト開始 ===");
+
+    var service = new BacktestService(db);
+
+    await service.RunAsync(
+        new DateTime(2025, 1, 1),
+        new DateTime(2025, 12, 31),
+        topCount: 5);
+
+    Console.WriteLine("=== バックテスト終了 ===");
 }
 
 // ==============================

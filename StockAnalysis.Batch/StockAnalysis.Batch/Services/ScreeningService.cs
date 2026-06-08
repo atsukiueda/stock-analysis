@@ -215,8 +215,10 @@ public class ScreeningService
                     Up10Probability = up10Probability,
 
                     AiRankingScore =
-                        (up5Probability * 0.6m)
-                        + (up10Probability * 0.4m)
+                        (up5Probability * 0.1m)
+                        + (up10Probability * 0.1m)
+                        + (expectedTakeProfit * 0.8m)
+                        - (Math.Abs(expectedStopLoss) * 0.1m)
                         + ((x.Score.TotalScore + bonus) * 0.5m),
 
                     FinancialScore = x.Score.FinancialScore,
@@ -247,6 +249,7 @@ public class ScreeningService
                         : 0m,
                 };
             })
+            .Where(x => x.ExpectedTakeProfit >= 15m)
             .OrderByDescending(x => x.AiRankingScore)
             .ThenByDescending(x => x.Up5Probability)
             .ThenByDescending(x => x.TotalScore)
