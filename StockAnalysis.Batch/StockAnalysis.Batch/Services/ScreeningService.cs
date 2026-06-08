@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
 
@@ -7,6 +8,7 @@ namespace StockAnalysis.Batch.Services;
 public class ScreeningService
 {
     private readonly StockAnalysisDbContext _db;
+
 
     public ScreeningService(
         StockAnalysisDbContext db)
@@ -18,6 +20,7 @@ public class ScreeningService
     string marketName,
     string marketRegime)
     {
+
         if (marketRegime == "StrongRiskOn")
         {
             return marketName switch
@@ -44,6 +47,9 @@ public class ScreeningService
     public async Task<List<ScreeningResult>> GetTopStocksAsync(
     ScreeningCondition? condition = null)
     {
+        var totalSw = Stopwatch.StartNew();
+        var stepSw = Stopwatch.StartNew();
+
         condition ??= new ScreeningCondition();
 
         var latestDate =
@@ -142,20 +148,40 @@ public class ScreeningService
         var up5ProbabilityMap =
             await up5Service.PredictLatestProbabilitiesAsync();
 
+        Console.WriteLine(
+            $"Up5 : {stepSw.Elapsed.TotalSeconds:F2} sec");
+
+        stepSw.Restart();
+
         var up10Service = new MlUp10PredictionService(_db);
 
         var up10ProbabilityMap =
             await up10Service.PredictLatestUp10ProbabilitiesAsync();
+
+        Console.WriteLine(
+            $"Up10 : {stepSw.Elapsed.TotalSeconds:F2} sec");
+
+        stepSw.Restart();
 
         var takeProfitService = new MlTakeProfitPredictionService(_db);
 
         var takeProfitMap =
             await takeProfitService.PredictLatestTakeProfitAsync();
 
+        Console.WriteLine(
+            $"TakeProfit : {stepSw.Elapsed.TotalSeconds:F2} sec");
+
+        stepSw.Restart();
+
         var stopLossService = new MlStopLossPredictionService(_db);
 
         var stopLossMap =
             await stopLossService.PredictLatestStopLossAsync();
+
+        Console.WriteLine(
+            $"StopLoss : {stepSw.Elapsed.TotalSeconds:F2} sec");
+
+        stepSw.Restart();
 
         var results = sourceItems
             .Select(x =>
@@ -256,6 +282,11 @@ public class ScreeningService
             .Take(condition.TopCount)
             .ToList();
 
+        totalSw.Stop();
+
+        Console.WriteLine(
+            $"Screening Total : {totalSw.Elapsed.TotalSeconds:F2} sec");
+
         return results;
     }
 
@@ -285,30 +316,42 @@ public class ScreeningService
 
         var results = new List<SwingTradeAdvice>();
 
+        var targetCodes = sourceItems
+            .Select(x => x.Score.Code)
+            .Distinct()
+            .ToList();
+
+        var priceRows = await _db.PricesDaily
+            .Where(x => targetCodes.Contains(x.Code))
+            .Where(x => x.TradeDate <= latestDate)
+            .Where(x => x.ClosePrice != null)
+            .Where(x => x.ClosePrice > 0)
+            .Select(x => new
+            {
+                x.Code,
+                x.TradeDate,
+                x.ClosePrice
+            })
+            .ToListAsync();
+
+        var latestPriceMap = priceRows
+            .GroupBy(x => x.Code)
+            .Select(g => g
+                .OrderByDescending(x => x.TradeDate)
+                .First())
+            .ToDictionary(x => x.Code);
+
         foreach (var item in sourceItems)
         {
-            var latestPrice = await _db.PricesDaily
-                .Where(x => x.Code == item.Score.Code)
-                .Where(x => x.TradeDate <= latestDate)
-                .Where(x => x.ClosePrice != null)
-                .OrderByDescending(x => x.TradeDate)
-                .FirstOrDefaultAsync();
-
-            if (latestPrice == null ||
-                latestPrice.ClosePrice == null ||
-                latestPrice.ClosePrice <= 0)
+            if (!latestPriceMap.TryGetValue(item.Score.Code, out var latestPrice))
             {
                 continue;
             }
 
-            var entryPrice =
-                latestPrice.ClosePrice.Value;
+            var entryPrice = latestPrice.ClosePrice!.Value;
 
-            var takeProfitPrice =
-                Math.Round(entryPrice * 1.05m, 2);
-
-            var stopLossPrice =
-                Math.Round(entryPrice * 0.97m, 2);
+            var takeProfitPrice = Math.Round(entryPrice * 1.05m, 2);
+            var stopLossPrice = Math.Round(entryPrice * 0.97m, 2);
 
             results.Add(new SwingTradeAdvice
             {

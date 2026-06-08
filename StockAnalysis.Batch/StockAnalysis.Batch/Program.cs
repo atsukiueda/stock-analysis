@@ -29,10 +29,10 @@ const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP5_TRAINING = false;
 const bool RUN_ML_UP10_TRAINING = false;
-const bool RUN_SCREENING = false;
+const bool RUN_SCREENING = true;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
-const bool RUN_BACKTEST = true;
+const bool RUN_BACKTEST = false;
 
 // ==============================
 // appsettings.json 読み込み

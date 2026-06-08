@@ -257,9 +257,6 @@ public class MlUp5PredictionService
             .Take(100)
             .ToList();
 
-        var predictionEngine =
-            _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
-
         var rankingSource = new List<dynamic>();
 
         foreach (var x in latestScoreRows)
@@ -298,15 +295,12 @@ public class MlUp5PredictionService
                 ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25
             };
 
-            var prediction = predictionEngine.Predict(input);
-
             rankingSource.Add(new
             {
                 score.Code,
                 x.Company.CompanyName,
                 score.TotalScore,
-                score.SwingScore,
-                Up5Probability = prediction.Probability
+                score.SwingScore
             });
         }
 
@@ -608,18 +602,31 @@ DateTime tradeDate)
             .MaxAsync(x => x.ScoreDate);
 
         var latestScoreRows = await _db.StockScoresDaily
+            .AsNoTracking()
             .Where(x => x.ScoreDate == latestScoreDate)
             .ToListAsync();
 
-        var predictionEngine =
-            _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
+        var targetCodes = latestScoreRows
+            .Select(x => x.Code)
+            .Distinct()
+            .ToList();
 
-        var result = new Dictionary<string, decimal>();
+        var priceHistoryMap = await GetPriceHistoryMapAsync(targetCodes);
+
+        var marketFeatures = await GetMarketFeaturesWithCacheAsync(latestScoreDate);
+
+        var inputs = new List<MlStockPredictionInput>();
+        var codeList = new List<string>();
 
         foreach (var score in latestScoreRows)
         {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-                score.Code,
+            if (!priceHistoryMap.TryGetValue(score.Code, out var allPrices))
+            {
+                continue;
+            }
+
+            var technicalFeatures = CalculateTechnicalFeaturesFromPrices(
+                allPrices,
                 score.ScoreDate);
 
             if (technicalFeatures == null)
@@ -627,9 +634,7 @@ DateTime tradeDate)
                 continue;
             }
 
-            var marketFeatures = await CalculateMarketFeaturesAsync(score.ScoreDate);
-
-            var input = new MlStockPredictionInput
+            inputs.Add(new MlStockPredictionInput
             {
                 FinancialScore = score.FinancialScore,
                 GrowthScore = score.GrowthScore,
@@ -654,11 +659,33 @@ DateTime tradeDate)
                 NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
                 UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
                 VixMomentum25 = marketFeatures.VixMomentum25
-            };
+            });
 
-            var prediction = predictionEngine.Predict(input);
+            codeList.Add(score.Code);
+        }
 
-            result[score.Code] = (decimal)prediction.Probability * 100m;
+        if (inputs.Count == 0)
+        {
+            return new Dictionary<string, decimal>();
+        }
+
+        var dataView = _mlContext.Data.LoadFromEnumerable(inputs);
+
+        var predictions = model.Transform(dataView);
+
+        var predictionRows = _mlContext.Data
+            .CreateEnumerable<MlStockPredictionOutput>(
+                predictions,
+                reuseRowObject: false)
+            .ToList();
+
+        var result = new Dictionary<string, decimal>();
+
+        for (var i = 0; i < predictionRows.Count; i++)
+        {
+            result[codeList[i]] = Math.Round(
+                (decimal)predictionRows[i].Probability * 100m,
+                4);
         }
 
         return result;
@@ -927,5 +954,114 @@ DateTime tradeDate)
         _marketIndexHistoryCache[indexName] = prices;
 
         return prices;
+    }
+
+    private async Task<Dictionary<string, List<PriceDaily>>> GetPriceHistoryMapAsync(
+    IReadOnlyCollection<string> codes)
+    {
+        var prices = await _db.PricesDaily
+            .AsNoTracking()
+            .Where(x => codes.Contains(x.Code))
+            .Where(x => x.ClosePrice != null)
+            .OrderBy(x => x.Code)
+            .ThenBy(x => x.TradeDate)
+            .ToListAsync();
+
+        return prices
+            .GroupBy(x => x.Code)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToList());
+    }
+
+    private TechnicalFeatureValues? CalculateTechnicalFeaturesFromPrices(
+    List<PriceDaily> allPrices,
+    DateTime tradeDate)
+    {
+        var prices = allPrices
+            .Where(x => x.TradeDate <= tradeDate)
+            .TakeLast(80)
+            .ToList();
+
+        if (prices.Count < 80)
+        {
+            return null;
+        }
+
+        var latest = prices[^1];
+
+        if (latest.ClosePrice == null || latest.ClosePrice <= 0)
+        {
+            return null;
+        }
+
+        var latestClose = latest.ClosePrice.Value;
+
+        var close5Ago = prices[^6].ClosePrice;
+        var close25Ago = prices[^26].ClosePrice;
+
+        if (close5Ago == null || close5Ago <= 0 ||
+            close25Ago == null || close25Ago <= 0)
+        {
+            return null;
+        }
+
+        var latest25Prices = prices.TakeLast(25).ToList();
+        var previous25Prices = prices.Skip(prices.Count - 30).Take(25).ToList();
+
+        var latest75Prices = prices.TakeLast(75).ToList();
+        var previous75Prices = prices.Skip(prices.Count - 80).Take(75).ToList();
+
+        var ma25 = latest25Prices.Average(x => x.ClosePrice!.Value);
+        var previousMa25 = previous25Prices.Average(x => x.ClosePrice!.Value);
+
+        var ma75 = latest75Prices.Average(x => x.ClosePrice!.Value);
+        var previousMa75 = previous75Prices.Average(x => x.ClosePrice!.Value);
+
+        var avgVolume5 = prices
+            .TakeLast(5)
+            .Where(x => x.Volume != null)
+            .Average(x => x.Volume!.Value);
+
+        var avgVolume25 = latest25Prices
+            .Where(x => x.Volume != null)
+            .Average(x => x.Volume!.Value);
+
+        var high25 = latest25Prices
+            .Where(x => x.HighPrice != null)
+            .Max(x => x.HighPrice!.Value);
+
+        var low25 = latest25Prices
+            .Where(x => x.LowPrice != null)
+            .Min(x => x.LowPrice!.Value);
+
+        var range25 = high25 - low25;
+
+        return new TechnicalFeatureValues
+        {
+            Momentum5 = (float)((latestClose - close5Ago.Value) / close5Ago.Value * 100m),
+
+            Momentum25 = (float)((latestClose - close25Ago.Value) / close25Ago.Value * 100m),
+
+            DeviationFromMa25 = ma25 <= 0
+                ? 0
+                : (float)((latestClose - ma25) / ma25 * 100m),
+
+            VolumeRatio5 = avgVolume25 <= 0
+                ? 0
+                : (float)(avgVolume5 / avgVolume25),
+
+            ClosePositionInRange25 = range25 <= 0
+                ? 0.5f
+                : (float)((latestClose - low25) / range25),
+
+            Ma25Slope = previousMa25 <= 0
+                ? 0
+                : (float)((ma25 - previousMa25) / previousMa25 * 100m),
+
+            Ma75Slope = previousMa75 <= 0
+                ? 0
+                : (float)((ma75 - previousMa75) / previousMa75 * 100m)
+        };
     }
 }
