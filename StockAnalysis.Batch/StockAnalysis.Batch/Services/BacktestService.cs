@@ -183,7 +183,55 @@ public class BacktestService
             
                 MaxExpectedTakeProfit = 20m,
                 MaxMomentum25 = 10m
-            }
+            },
+            new()
+            {
+                Name = "TpExtreme_M25_10_TPUnder15",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+
+                // 現王者 TpExtreme_M25_10 の条件。
+                // Momentum25が10%を超える銘柄は過熱・反落リスクが高いため除外する。
+                MaxMomentum25 = 10m,
+
+                // TpExtreme_TPUnder15 の安定性を取り込む。
+                // TP予測が高すぎる銘柄は過熱銘柄を拾いやすいため、15%未満に制限する。
+                MaxExpectedTakeProfit = 15m
+            },
+            new()
+            {
+                Name = "TpExtreme_M25_0_10",
+            
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+            
+                MinMomentum25 = 0m,
+                MaxMomentum25 = 10m
+            },
+            new()
+            {
+                Name = "TpExtreme_M25_ExcludeMinus10To0",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+            
+                // 元の王者 TpExtreme_M25_10 と同じく、
+                // Momentum25が10%を超える過熱銘柄は除外する。
+                MaxMomentum25 = 10m,
+            
+                // ただし M25 < -10 は利益源だったため残す。
+                // 弱かった -10 <= M25 < 0 の帯だけを除外する。
+                ExcludeMomentum25Min = -10m,
+                ExcludeMomentum25Max = 0m
+            },
         };
 
         var resultsByScenario = scenarios.ToDictionary(
@@ -350,43 +398,72 @@ public class BacktestService
         foreach (var scenario in scenarios)
         {
             var candidates = rankingRows
-                .Where(x =>
-                    (scenario.MinExpectedTakeProfit == null ||
-                     x.ExpectedTakeProfit >= scenario.MinExpectedTakeProfit.Value)
+        .Where(x =>
+            // ExpectedTakeProfit の下限フィルタ。
+            // TP10以上など、予測利確幅が小さすぎる銘柄を除外したい場合に使う。
+            scenario.MinExpectedTakeProfit == null ||
+            x.ExpectedTakeProfit >= scenario.MinExpectedTakeProfit.Value)
 
-                    &&
+        .Where(x =>
+            // ExpectedTakeProfit の上限フィルタ。
+            // TPが高すぎる銘柄は過熱銘柄を拾う可能性があるため、
+            // TP15未満・TP20未満などの検証に使う。
+            scenario.MaxExpectedTakeProfit == null ||
+            x.ExpectedTakeProfit < scenario.MaxExpectedTakeProfit.Value)
 
-                    (scenario.MaxMomentum25 == null ||
-                     x.Momentum25 <= scenario.MaxMomentum25.Value))
-                .Where(x =>
-                    scenario.MaxExpectedTakeProfit == null ||
-                    x.ExpectedTakeProfit < scenario.MaxExpectedTakeProfit.Value)
-                .Select(x =>
-                {
-                    var up10Rate = x.Up10Probability / 100m;
+        .Where(x =>
+            // Momentum25 の下限フィルタ。
+            // 今回追加した TpExtreme_M25_0_10 では、
+            // Momentum25 が 0% 未満の銘柄を除外する。
+            // これがないと MinMomentum25 を設定しても結果が変わらない。
+            scenario.MinMomentum25 == null ||
+            x.Momentum25 >= scenario.MinMomentum25.Value)
 
-                    var expectedValue =
-                        (up10Rate * x.ExpectedTakeProfit)
-                        - ((1m - up10Rate) * Math.Abs(x.ExpectedStopLoss));
+        .Where(x =>
+            // Momentum25 の上限フィルタ。
+            // Momentum25 が高すぎる銘柄は過熱・反落リスクが高いため、
+            // M25_10 などの検証で使用する。
+            scenario.MaxMomentum25 == null ||
+            x.Momentum25 <= scenario.MaxMomentum25.Value)
 
-                    x.ExpectedValue = expectedValue;
+        .Where(x =>
+            // Momentum25 の除外レンジフィルタ。
+            // 例：ExcludeMomentum25Min = -10, ExcludeMomentum25Max = 0 の場合、
+            // -10 <= Momentum25 < 0 の銘柄を候補から除外する。
+            //
+            // TpExtreme_M25_ExcludeMinus10To0 では、
+            // M25 < -10 は強かったため残し、
+            // -10〜0 の弱い帯だけを除外する目的で使う。
+            scenario.ExcludeMomentum25Min == null ||
+            scenario.ExcludeMomentum25Max == null ||
+            x.Momentum25 < scenario.ExcludeMomentum25Min.Value ||
+            x.Momentum25 >= scenario.ExcludeMomentum25Max.Value)
+        .Select(x =>
+        {
+            var up10Rate = x.Up10Probability / 100m;
 
-                    if (scenario.Name.StartsWith("ExpectedValue"))
-                    {
-                        x.AiRankingScore = expectedValue;
-                    }
-                    else
-                    {
-                        x.AiRankingScore =
-                            expectedValue
-                            + (x.Up5Probability * 0.05m)
-                            + (x.TotalScore * scenario.TotalScoreWeight);
-                    }
+            var expectedValue =
+                (up10Rate * x.ExpectedTakeProfit)
+                - ((1m - up10Rate) * Math.Abs(x.ExpectedStopLoss));
 
-                    x.ExpectedValue = expectedValue;
+            x.ExpectedValue = expectedValue;
 
-                    return x;
-                })
+            if (scenario.Name.StartsWith("ExpectedValue"))
+            {
+                x.AiRankingScore = expectedValue;
+            }
+            else
+            {
+                // ExpectedValue単体は怪しいが、ランキング式に混ぜた状態では
+                // TpExtreme_M25_10 が最良だったため、現時点ではこちらを基準にする。
+                x.AiRankingScore =
+                    expectedValue
+                    + (x.Up5Probability * 0.05m)
+                    + (x.TotalScore * scenario.TotalScoreWeight);
+            }
+
+            return x;
+        })
                 .OrderByDescending(x => x.AiRankingScore)
                 .Take(Math.Min(topCount, executionSettings.MaxEntriesPerDay))
                 .ToList();
@@ -1188,5 +1265,15 @@ public class BacktestService
 
         public decimal? MaxMomentum25 { get; set; }
         public decimal? MinMomentum25 { get; set; }
+
+        // Momentum25の特定レンジを除外するための下限。
+        // 例：-10 <= Momentum25 < 0 を除外したい場合、
+        // ExcludeMomentum25Min = -10m を設定する。
+        public decimal? ExcludeMomentum25Min { get; set; }
+
+        // Momentum25の特定レンジを除外するための上限。
+        // 例：-10 <= Momentum25 < 0 を除外したい場合、
+        // ExcludeMomentum25Max = 0m を設定する。
+        public decimal? ExcludeMomentum25Max { get; set; }
     }
 }
