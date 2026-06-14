@@ -253,6 +253,29 @@ public class BacktestService
                 ExcludeExpectedTakeProfitMin = 20m,
                 ExcludeExpectedTakeProfitMax = 25m
             },
+            new()
+            {
+                Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25_ExcludeTPUnder10M5To10",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+            
+                MaxMomentum25 = 10m,
+            
+                ExcludeMomentum25Min = -10m,
+                ExcludeMomentum25Max = 0m,
+            
+                ExcludeExpectedTakeProfitMin = 20m,
+                ExcludeExpectedTakeProfitMax = 25m,
+            
+                // TP < 10 かつ 5 <= M25 < 10 の弱いクロス帯を除外する。
+                ExcludeCrossExpectedTakeProfitMin = decimal.MinValue,
+                ExcludeCrossExpectedTakeProfitMax = 10m,
+                ExcludeCrossMomentum25Min = 5m,
+                ExcludeCrossMomentum25Max = 10m
+            },
         };
 
         var resultsByScenario = scenarios.ToDictionary(
@@ -471,6 +494,20 @@ public class BacktestService
             scenario.ExcludeExpectedTakeProfitMax == null ||
             x.ExpectedTakeProfit < scenario.ExcludeExpectedTakeProfitMin.Value ||
             x.ExpectedTakeProfit >= scenario.ExcludeExpectedTakeProfitMax.Value)
+        .Where(x =>
+            // ExpectedTP と Momentum25 のクロス条件除外。
+            // 例：TP < 10 かつ 5 <= M25 < 10 のような、
+            // 単独条件ではなく組み合わせで悪い帯だけを除外する。
+            scenario.ExcludeCrossExpectedTakeProfitMin == null ||
+            scenario.ExcludeCrossExpectedTakeProfitMax == null ||
+            scenario.ExcludeCrossMomentum25Min == null ||
+            scenario.ExcludeCrossMomentum25Max == null ||
+            !(
+                x.ExpectedTakeProfit >= scenario.ExcludeCrossExpectedTakeProfitMin.Value &&
+                x.ExpectedTakeProfit < scenario.ExcludeCrossExpectedTakeProfitMax.Value &&
+                x.Momentum25 >= scenario.ExcludeCrossMomentum25Min.Value &&
+                x.Momentum25 < scenario.ExcludeCrossMomentum25Max.Value
+            ))
         .Select(x =>
         {
             var up10Rate = x.Up10Probability / 100m;
@@ -1318,5 +1355,11 @@ public class BacktestService
         // 例：20 <= ExpectedTP < 25 を除外したい場合、
         // ExcludeExpectedTakeProfitMax = 25m を設定する。
         public decimal? ExcludeExpectedTakeProfitMax { get; set; }
+
+        public decimal? ExcludeCrossExpectedTakeProfitMin { get; set; }
+        public decimal? ExcludeCrossExpectedTakeProfitMax { get; set; }
+
+        public decimal? ExcludeCrossMomentum25Min { get; set; }
+        public decimal? ExcludeCrossMomentum25Max { get; set; }
     }
 }
