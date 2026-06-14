@@ -4,6 +4,7 @@ using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Dtos;
 using StockAnalysis.Batch.Models;
 using StockAnalysis.Batch.Services;
+using static System.Formats.Asn1.AsnWriter;
 
 // ==============================
 // 実行フラグ
@@ -29,10 +30,11 @@ const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP5_TRAINING = false;
 const bool RUN_ML_UP10_TRAINING = false;
-const bool RUN_SCREENING = true;
+const bool RUN_SCREENING = false;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
-const bool RUN_BACKTEST = false;
+const bool RUN_BACKTEST = true;
+const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
 
 // ==============================
 // appsettings.json 読み込み
@@ -1236,6 +1238,21 @@ if (RUN_BACKTEST)
         topCount: 5);
 
     Console.WriteLine("=== バックテスト終了 ===");
+}
+
+if (RUN_TAKEPROFIT_FEATURE_IMPORTANCE)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== TP特徴量重要度分析開始 ===");
+
+    var service = new MlTakeProfitPredictionService(db);
+
+    await service.AnalyzeFeatureImportanceAsync();
+
+    Console.WriteLine();
+    Console.WriteLine("=== TP特徴量重要度分析終了 ===");
+
+    return;
 }
 
 // ==============================

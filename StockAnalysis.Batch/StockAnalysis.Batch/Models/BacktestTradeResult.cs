@@ -33,4 +33,17 @@ public class BacktestTradeResult
     public decimal ExpectedStopLoss { get; set; }
 
     public decimal AiRankingScore { get; set; }
+
+    public int Shares { get; set; }
+
+    public decimal GrossProfitAmount { get; set; }
+
+    public decimal NetProfitAmount { get; set; }
+
+    public string MarketRegime { get; set; } = "";
+
+    public decimal ExpectedValue { get; set; }
+
+    public decimal Momentum25 { get; set; }
+
 }

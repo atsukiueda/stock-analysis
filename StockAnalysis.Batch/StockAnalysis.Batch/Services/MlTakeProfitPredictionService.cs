@@ -775,6 +775,118 @@ public class MlTakeProfitPredictionService
                 g => g.ToList());
     }
 
+    public async Task AnalyzeFeatureImportanceAsync()
+    {
+        var inputs = await CreateTrainingInputsAsync();
+
+        if (inputs.Count < 100)
+        {
+            Console.WriteLine($"特徴量重要度分析に必要なデータが少なすぎます。件数: {inputs.Count}");
+            return;
+        }
+
+        var orderedInputs = inputs
+            .OrderBy(x => x.TradeDate)
+            .ToList();
+
+        var trainCount = (int)(orderedInputs.Count * 0.8);
+
+        var trainInputs = orderedInputs
+            .Take(trainCount)
+            .ToList();
+
+        var testInputs = orderedInputs
+            .Skip(trainCount)
+            .ToList();
+
+        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
+        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
+
+        var basePipeline = CreateBasePipeline();
+
+        var featureTransformer = basePipeline.Fit(trainSet);
+
+        var transformedTrainSet = featureTransformer.Transform(trainSet);
+        var transformedTestSet = featureTransformer.Transform(testSet);
+
+        var trainer = _mlContext.Regression.Trainers.FastTree(
+            labelColumnName: "Label",
+            featureColumnName: "Features",
+            numberOfLeaves: 16,
+            numberOfTrees: 200,
+            minimumExampleCountPerLeaf: 10);
+
+        var model = trainer.Fit(transformedTrainSet);
+
+        var predictions = model.Transform(transformedTestSet);
+
+        var metrics = _mlContext.Regression.Evaluate(
+            predictions,
+            labelColumnName: "Label",
+            scoreColumnName: "Score");
+
+        Console.WriteLine();
+        Console.WriteLine("=== TakeProfit 回帰モデル 評価結果 ===");
+        Console.WriteLine($"RSquared: {metrics.RSquared:F4}");
+        Console.WriteLine($"RMSE    : {metrics.RootMeanSquaredError:F4}");
+        Console.WriteLine($"MAE     : {metrics.MeanAbsoluteError:F4}");
+
+        var permutationMetrics =
+            _mlContext.Regression.PermutationFeatureImportance(
+                model,
+                transformedTestSet,
+                labelColumnName: "Label",
+                permutationCount: 5);
+
+        var featureNames = new[]
+        {
+        nameof(MlTakeProfitInput.FinancialScore),
+        nameof(MlTakeProfitInput.GrowthScore),
+        nameof(MlTakeProfitInput.DividendScore),
+        nameof(MlTakeProfitInput.RoeScore),
+        nameof(MlTakeProfitInput.PerScore),
+        nameof(MlTakeProfitInput.PbrScore),
+        nameof(MlTakeProfitInput.TechnicalScore),
+        nameof(MlTakeProfitInput.SwingScore),
+        nameof(MlTakeProfitInput.MarketScore),
+        nameof(MlTakeProfitInput.Momentum5),
+        nameof(MlTakeProfitInput.Momentum25),
+        nameof(MlTakeProfitInput.DeviationFromMa25),
+        nameof(MlTakeProfitInput.VolumeRatio5),
+        nameof(MlTakeProfitInput.ClosePositionInRange25),
+        nameof(MlTakeProfitInput.Ma25Slope),
+        nameof(MlTakeProfitInput.Ma75Slope),
+        nameof(MlTakeProfitInput.TopixMomentum25),
+        nameof(MlTakeProfitInput.Sp500Momentum25),
+        nameof(MlTakeProfitInput.NasdaqMomentum25),
+        nameof(MlTakeProfitInput.UsdJpyMomentum25),
+        nameof(MlTakeProfitInput.VixMomentum25)
+    };
+
+        Console.WriteLine();
+        Console.WriteLine("=== TakeProfit 特徴量重要度 ===");
+
+        var ranking = permutationMetrics
+            .Select((item, index) => new
+            {
+                FeatureName = featureNames[index],
+                RSquaredDrop = item.RSquared.Mean,
+                RmseIncrease = item.RootMeanSquaredError.Mean,
+                MaeIncrease = item.MeanAbsoluteError.Mean
+            })
+            .OrderByDescending(x => Math.Abs(x.RSquaredDrop))
+            .ToList();
+
+        foreach (var item in ranking)
+        {
+            Console.WriteLine(
+                $"{item.FeatureName,-30} " +
+                $"RSquaredDrop:{item.RSquaredDrop:F6} " +
+                $"RMSE:{item.RmseIncrease:F6} " +
+                $"MAE:{item.MaeIncrease:F6}");
+        }
+    }
+
     private TechnicalFeatureValues? CalculateTechnicalFeaturesFromPrices(
     List<PriceDaily> allPrices,
     DateTime tradeDate)
