@@ -971,6 +971,8 @@ public class BacktestService
                 .Where(x => x.ExpectedValue < bucket.Max)
                 .ToList();
 
+            // 該当トレードがないEV帯は表示しない。
+            // サンプルゼロの帯を出すと、比較時にノイズになるため除外する。
             if (bucketResults.Count == 0)
             {
                 continue;
@@ -987,10 +989,13 @@ public class BacktestService
                 .Where(x => x.NetProfitAmount < 0)
                 .Sum(x => Math.Abs(x.NetProfitAmount));
 
+            // 損失がゼロの場合、PFは理論上無限大になる。
+            // ただし表示上は既存仕様に合わせて 0 とする。
             var bucketProfitFactor = bucketGrossLoss > 0
                 ? bucketGrossProfit / bucketGrossLoss
                 : 0m;
 
+            // 初期資金に対して、このEV帯だけでどれだけ資金を増減させたかを見る。
             var bucketCapitalReturn =
                 bucketNetProfit / executionSettings.InitialCapital * 100m;
 
@@ -1001,19 +1006,22 @@ public class BacktestService
                 $"NetProfit:{bucketNetProfit,10:N0} " +
                 $"CapitalReturn:{bucketCapitalReturn,7:F2}% " +
                 $"PF:{bucketProfitFactor:F2}");
-
-            Console.WriteLine();
-            Console.WriteLine("=== ExpectedValue統計 ===");
-
-            Console.WriteLine(
-                $"AvgEV : {results.Average(x => x.ExpectedValue):F4}");
-
-            Console.WriteLine(
-                $"MaxEV : {results.Max(x => x.ExpectedValue):F4}");
-
-            Console.WriteLine(
-                $"MinEV : {results.Min(x => x.ExpectedValue):F4}");
         }
+
+        // ExpectedValue全体統計はEV帯ごとのループ内ではなく、
+        // 全バケット表示後に1回だけ出す。
+        // これにより、同じAvgEV/MaxEV/MinEVが何度も表示されるバグを防ぐ。
+        Console.WriteLine();
+        Console.WriteLine("=== ExpectedValue統計 ===");
+
+        Console.WriteLine(
+            $"AvgEV : {results.Average(x => x.ExpectedValue):F4}");
+
+        Console.WriteLine(
+            $"MaxEV : {results.Max(x => x.ExpectedValue):F4}");
+
+        Console.WriteLine(
+            $"MinEV : {results.Min(x => x.ExpectedValue):F4}");
     }
 
     private async Task<PriceDaily?> GetNextBusinessDayEntryPriceWithCacheAsync(
