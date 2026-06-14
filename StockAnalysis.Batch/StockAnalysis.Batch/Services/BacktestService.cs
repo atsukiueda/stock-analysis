@@ -232,6 +232,27 @@ public class BacktestService
                 ExcludeMomentum25Min = -10m,
                 ExcludeMomentum25Max = 0m
             },
+            new()
+            {
+                Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+            
+                // 現時点の新王者ルール。
+                // Momentum25が10%を超える過熱銘柄を除外し、
+                // さらに弱かった -10 <= M25 < 0 の帯だけを除外する。
+                MaxMomentum25 = 10m,
+                ExcludeMomentum25Min = -10m,
+                ExcludeMomentum25Max = 0m,
+            
+                // TP20〜25帯だけを除外する。
+                // TP15〜20とTP25以上は利益源なので残す。
+                ExcludeExpectedTakeProfitMin = 20m,
+                ExcludeExpectedTakeProfitMax = 25m
+            },
         };
 
         var resultsByScenario = scenarios.ToDictionary(
@@ -438,6 +459,18 @@ public class BacktestService
             scenario.ExcludeMomentum25Max == null ||
             x.Momentum25 < scenario.ExcludeMomentum25Min.Value ||
             x.Momentum25 >= scenario.ExcludeMomentum25Max.Value)
+        .Where(x =>
+            // ExpectedTakeProfit の除外レンジフィルタ。
+            // 例：ExcludeExpectedTakeProfitMin = 20, ExcludeExpectedTakeProfitMax = 25 の場合、
+            // 20 <= ExpectedTP < 25 の銘柄を候補から除外する。
+            //
+            // 現在の最良シナリオでも TP20-25 帯は
+            // Trades:4 / WinRate:0% / NetProfit:-34,523 / PF:0.00
+            // と明確に足を引っ張っているため、ここだけを狙って除外する。
+            scenario.ExcludeExpectedTakeProfitMin == null ||
+            scenario.ExcludeExpectedTakeProfitMax == null ||
+            x.ExpectedTakeProfit < scenario.ExcludeExpectedTakeProfitMin.Value ||
+            x.ExpectedTakeProfit >= scenario.ExcludeExpectedTakeProfitMax.Value)
         .Select(x =>
         {
             var up10Rate = x.Up10Probability / 100m;
@@ -1275,5 +1308,15 @@ public class BacktestService
         // 例：-10 <= Momentum25 < 0 を除外したい場合、
         // ExcludeMomentum25Max = 0m を設定する。
         public decimal? ExcludeMomentum25Max { get; set; }
+
+        // ExpectedTakeProfitの特定レンジを除外するための下限。
+        // 例：20 <= ExpectedTP < 25 を除外したい場合、
+        // ExcludeExpectedTakeProfitMin = 20m を設定する。
+        public decimal? ExcludeExpectedTakeProfitMin { get; set; }
+
+        // ExpectedTakeProfitの特定レンジを除外するための上限。
+        // 例：20 <= ExpectedTP < 25 を除外したい場合、
+        // ExcludeExpectedTakeProfitMax = 25m を設定する。
+        public decimal? ExcludeExpectedTakeProfitMax { get; set; }
     }
 }
