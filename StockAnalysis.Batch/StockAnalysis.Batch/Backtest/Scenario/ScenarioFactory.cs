@@ -246,4 +246,27 @@ public class ScenarioFactory
 
         return scenarios;
     }
+
+    /// <summary>
+    /// 指定されたテスト期間で使用するリバウンド戦略シナリオを作成する。
+    /// BacktestService.RunAsync側で期間を絞るため、シナリオにはEntryDateFrom/Toを設定しない。
+    /// </summary>
+    /// <returns>期間固定なしのウォークフォワード用シナリオ一覧。</returns>
+    public List<BacktestScenario> CreateReboundWalkForwardBaseScenarios()
+    {
+        return new List<BacktestScenario>
+    {
+        new BacktestScenario
+        {
+            Name = "WF_Debug_NoFilter",
+            Up5Weight = 0.1m,
+            Up10Weight = 0.1m,
+            TakeProfitWeight = 0.8m,
+            StopLossWeight = 0.1m,
+            TotalScoreWeight = 0.5m,
+            MaxHoldingBusinessDays = 10
+        },
+        CreateBaseReboundStrongRiskOffScenario("WF_Strict_Best")
+    };
+    }
 }

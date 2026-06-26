@@ -5,6 +5,7 @@ using StockAnalysis.Batch.Dtos;
 using StockAnalysis.Batch.Models;
 using StockAnalysis.Batch.Services;
 using static System.Formats.Asn1.AsnWriter;
+using StockAnalysis.Batch.Services;
 
 // ==============================
 // 実行フラグ
@@ -29,12 +30,14 @@ const bool RUN_SWING_ADVICE = false;
 const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP5_TRAINING = false;
+const bool RUN_WALK_FORWARD_UP5 = true;
 const bool RUN_ML_UP10_TRAINING = false;
 const bool RUN_SCREENING = false;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
-const bool RUN_BACKTEST = true;
+const bool RUN_BACKTEST = false;
 const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
+
 
 // ==============================
 // appsettings.json 読み込み
@@ -1170,6 +1173,57 @@ if (RUN_ML_UP5_TRAINING)
     await service.TrainAndEvaluateAsync();
 
     Console.WriteLine("=== Up5 ML.NET 学習終了 ===");
+}
+
+var mlTrainingDataSummary = await db.MlTrainingData
+    .GroupBy(x => x.TradeDate.Year)
+    .Select(g => new
+    {
+        Year = g.Key,
+        Count = g.Count(),
+        Up5Count = g.Count(x => x.Up5),
+        FutureReturn5Count = g.Count(x => x.FutureReturn5 != null),
+        MinDate = g.Min(x => x.TradeDate),
+        MaxDate = g.Max(x => x.TradeDate)
+    })
+    .OrderBy(x => x.Year)
+    .ToListAsync();
+
+Console.WriteLine();
+Console.WriteLine("=== MlTrainingData 年別件数 ===");
+
+foreach (var item in mlTrainingDataSummary)
+{
+    Console.WriteLine(
+        $"{item.Year}: Count:{item.Count}, Up5:{item.Up5Count}, FutureReturn5:{item.FutureReturn5Count}, " +
+        $"Date:{item.MinDate:yyyy-MM-dd} - {item.MaxDate:yyyy-MM-dd}");
+}
+
+// ==============================
+// Up5 ウォークフォワード学習
+// ==============================
+
+if (RUN_WALK_FORWARD_UP5)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== Up5 ウォークフォワード学習開始 ===");
+
+    var up5Service =
+        new MlUp5PredictionService(db);
+
+    var backtestService =
+    new BacktestService(db);
+
+    var walkForwardRunner =
+        new WalkForwardRunner(
+            up5Service,
+            backtestService);
+
+    await walkForwardRunner.TrainUp5AllAsync();
+
+    Console.WriteLine("=== Up5 ウォークフォワード学習終了 ===");
+
+    return;
 }
 
 // ==============================

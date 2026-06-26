@@ -4,14 +4,16 @@ using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
 using static System.Formats.Asn1.AsnWriter;
 using Microsoft.ML.Trainers.FastTree;
+using StockAnalysis.Batch.Models.Ml;
+using StockAnalysis.Batch.Services.Interfaces;
 
 namespace StockAnalysis.Batch.Services;
 
-public class MlUp5PredictionService
+public class MlUp5PredictionService : IMlWalkForwardTrainingService
 {
     private const string ModelDirectory = "Models";
 
-    private const string ModelPath = "Models/up5-model.zip";
+    private const string DefaultModelName = "up5-model";
 
     private readonly StockAnalysisDbContext _db;
     private readonly MLContext _mlContext;
@@ -30,203 +32,76 @@ public class MlUp5PredictionService
         _mlContext = new MLContext(seed: 1);
     }
 
-    public async Task TrainAndEvaluateAsync()
+    /// <summary>
+    /// 既存処理との互換性を保つため、全期間データでUp5モデルを学習・評価する。
+    /// 新規のウォークフォワード検証では TrainingPeriod 指定版を使用する。
+    /// </summary>
+    public Task TrainAndEvaluateAsync()
     {
-        var excludedNameKeywords = new[]
+        var period = new TrainingPeriod
         {
-            "ＥＴＦ",
-            "ETF",
-            "投信",
-            "上場投信",
-            "インデックスファンド",
-            "ＮＥＸＴ　ＦＵＮＤＳ",
-            "MAXIS",
-            "ｉＦｒｅｅＥＴＦ",
-            "iFreeETF",
-            "グローバルＸ",
-            "REIT",
-            "リート",
-            "ETN",
-            "ＳＰＤＲ",
-            "SPDR",
-            "ゴールド・シェア",
-            "Gold Shares"
+            TrainFrom = DateTime.MinValue,
+            TrainTo = DateTime.MaxValue,
+            TestFrom = DateTime.MinValue,
+            TestTo = DateTime.MaxValue,
+            ModelName = DefaultModelName
         };
 
-        var trainingSourceRows = await _db.MlTrainingData
-            .Where(x => x.FutureReturn5 != null)
-            .Join(
-                _db.Companies,
-                ml => ml.Code,
-                company => company.Code,
-                (ml, company) => new
-                {
-                    Ml = ml,
-                    Company = company
-                })
-            .Where(x => x.Company.IsActive)
-            .ToListAsync();
+        return TrainAndEvaluateAsync(period);
+    }
 
-        var inputs = new List<MlStockPredictionInput>();
-
-        foreach (var row in trainingSourceRows
-                     .Where(x => !excludedNameKeywords.Any(keyword =>
-                         x.Company.CompanyName.Contains(keyword)))
-                     .OrderBy(x => x.Ml.TradeDate))
-        {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-                row.Ml.Code,
-                row.Ml.TradeDate);
-
-            if (technicalFeatures == null)
-            {
-                continue;
-            }
-
-            var marketFeatures = await CalculateMarketFeaturesAsync(row.Ml.TradeDate);
-
-            inputs.Add(new MlStockPredictionInput
-            {
-                FinancialScore = row.Ml.FinancialScore,
-                GrowthScore = row.Ml.GrowthScore,
-                DividendScore = row.Ml.DividendScore,
-                RoeScore = row.Ml.RoeScore,
-                PerScore = row.Ml.PerScore,
-                PbrScore = row.Ml.PbrScore,
-                TechnicalScore = row.Ml.TechnicalScore,
-                SwingScore = row.Ml.SwingScore,
-                MarketScore = row.Ml.MarketScore,
-                TradeDate = row.Ml.TradeDate,
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25,
-                Momentum5 = technicalFeatures.Momentum5,
-                Momentum25 = technicalFeatures.Momentum25,
-                DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-                VolumeRatio5 = technicalFeatures.VolumeRatio5,
-                ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-
-                Up5 = row.Ml.Up5
-            });
-        }
+    /// <summary>
+    /// 指定されたTrainingPeriodに従ってUp5モデルを学習・保存する。
+    /// ここでは学習期間内の評価までを行い、TestFrom-TestToの本番評価はバックテスト側で行う。
+    /// </summary>
+    /// <param name="period">学習期間・テスト期間・モデル名を持つ期間定義。</param>
+    public async Task TrainAndEvaluateAsync(TrainingPeriod period)
+    {
+        var inputs = await CreateTrainingInputsAsync(period);
 
         if (inputs.Count < 50)
         {
-            Console.WriteLine($"学習データが少なすぎます。件数: {inputs.Count}");
+            Console.WriteLine($"学習データが少なすぎます。Model:{period.ModelName}, 件数:{inputs.Count}");
             return;
         }
 
         var positiveCount = inputs.Count(x => x.Up5);
         var negativeCount = inputs.Count - positiveCount;
 
-        Console.WriteLine($"DataCount: {inputs.Count}");
-        Console.WriteLine($"Up5=True : {positiveCount}");
-        Console.WriteLine($"Up5=False: {negativeCount}");
+        Console.WriteLine();
+        Console.WriteLine("=== Up5 学習データ概要 ===");
+        Console.WriteLine($"ModelName   : {period.ModelName}");
+        Console.WriteLine($"TrainPeriod : {period.TrainFrom:yyyy-MM-dd} - {period.TrainTo:yyyy-MM-dd}");
+        Console.WriteLine($"TestPeriod  : {period.TestFrom:yyyy-MM-dd} - {period.TestTo:yyyy-MM-dd}");
+        Console.WriteLine($"DataCount   : {inputs.Count}");
+        Console.WriteLine($"Up5=True    : {positiveCount}");
+        Console.WriteLine($"Up5=False   : {negativeCount}");
         Console.WriteLine($"PositiveRate: {(double)positiveCount / inputs.Count:P2}");
 
-        var orderedInputs = inputs
-            .OrderBy(x => x.TradeDate)
-            .ToList();
+        var bestModel = await TrainBestModelAsync(period);
 
-                var trainCount = (int)(orderedInputs.Count * 0.8);
-
-                var trainInputs = orderedInputs
-                    .Take(trainCount)
-                    .ToList();
-
-                var testInputs = orderedInputs
-                    .Skip(trainCount)
-                    .ToList();
-
-                var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-                var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
-
-                Console.WriteLine($"TrainCount: {trainInputs.Count}");
-                Console.WriteLine($"TestCount : {testInputs.Count}");
-                Console.WriteLine($"TrainDate : {trainInputs.Min(x => x.TradeDate):yyyy-MM-dd} - {trainInputs.Max(x => x.TradeDate):yyyy-MM-dd}");
-                Console.WriteLine($"TestDate  : {testInputs.Min(x => x.TradeDate):yyyy-MM-dd} - {testInputs.Max(x => x.TradeDate):yyyy-MM-dd}");
-
-        var basePipeline = _mlContext.Transforms.Concatenate(
-        "Features",
-        nameof(MlStockPredictionInput.FinancialScore),
-        nameof(MlStockPredictionInput.GrowthScore),
-        nameof(MlStockPredictionInput.DividendScore),
-        nameof(MlStockPredictionInput.RoeScore),
-        nameof(MlStockPredictionInput.PerScore),
-        nameof(MlStockPredictionInput.PbrScore),
-        nameof(MlStockPredictionInput.TechnicalScore),
-        nameof(MlStockPredictionInput.SwingScore),
-        nameof(MlStockPredictionInput.MarketScore),
-        nameof(MlStockPredictionInput.Momentum5),
-        nameof(MlStockPredictionInput.Momentum25),
-        nameof(MlStockPredictionInput.DeviationFromMa25),
-        nameof(MlStockPredictionInput.VolumeRatio5),
-        nameof(MlStockPredictionInput.ClosePositionInRange25),
-        nameof(MlStockPredictionInput.TopixMomentum25),
-        nameof(MlStockPredictionInput.Sp500Momentum25),
-        nameof(MlStockPredictionInput.NasdaqMomentum25),
-        nameof(MlStockPredictionInput.UsdJpyMomentum25),
-        nameof(MlStockPredictionInput.VixMomentum25),
-        nameof(MlStockPredictionInput.Ma25Slope),
-        nameof(MlStockPredictionInput.Ma75Slope))
-    .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
-
-        var sdcaPipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(
-                labelColumnName: "Label",
-                featureColumnName: "Features"));
-
-        var fastTreePipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.FastTree(
-                labelColumnName: "Label",
-                featureColumnName: "Features",
-                numberOfLeaves: 8,
-                numberOfTrees: 100,
-                minimumExampleCountPerLeaf: 10));
-
-        var sdcaModel = sdcaPipeline.Fit(trainSet);
-        var fastTreeModel = fastTreePipeline.Fit(trainSet);
-
-        var sdcaResult = EvaluateModel(
-            modelName: "SdcaLogisticRegression",
-            model: sdcaModel,
-            testSet: testSet);
-
-        var fastTreeResult = EvaluateModel(
-            modelName: "FastTree",
-            model: fastTreeModel,
-            testSet: testSet);
-
-        ITransformer bestModel;
-
-        if (fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate)
+        var excludedNameKeywords = new[]
         {
-            bestModel = fastTreeModel;
-        }
-        else
-        {
-            bestModel = sdcaModel;
-        }
+        "ＥＴＦ",
+        "ETF",
+        "投信",
+        "上場投信",
+        "インデックスファンド",
+        "ＮＥＸＴ　ＦＵＮＤＳ",
+        "MAXIS",
+        "ｉＦｒｅｅＥＴＦ",
+        "iFreeETF",
+        "グローバルＸ",
+        "REIT",
+        "リート",
+        "ETN",
+        "ＳＰＤＲ",
+        "SPDR",
+        "ゴールド・シェア",
+        "Gold Shares"
+    };
 
-        var bestModelName = fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate
-            ? "FastTree"
-            : "SdcaLogisticRegression";
-
-        Console.WriteLine();
-        Console.WriteLine($"=== 採用モデル: {bestModelName} ===");
-
-        Directory.CreateDirectory(ModelDirectory);
-
-        _mlContext.Model.Save(
-            bestModel,
-            trainSet.Schema,
-            ModelPath);
-
-        Console.WriteLine($"モデル保存: {ModelPath}");
-
-        await ShowLatestPredictionRankingAsync(bestModel, excludedNameKeywords);
+        //await ShowLatestPredictionRankingAsync(bestModel, excludedNameKeywords);
     }
 
     private async Task ShowLatestPredictionRankingAsync(
@@ -304,19 +179,19 @@ public class MlUp5PredictionService
             });
         }
 
-        var ranking = rankingSource
-            .OrderByDescending(x => x.Up5Probability)
-            .Take(20)
-            .ToList();
+        //var ranking = rankingSource
+        //    .OrderByDescending(x => x.Up5Probability)
+        //    .Take(20)
+        //    .ToList();
 
-        Console.WriteLine();
-        Console.WriteLine($"=== 最新スコア Up5 予測ランキング: {latestScoreDate:yyyy-MM-dd} ===");
+        //Console.WriteLine();
+        //Console.WriteLine($"=== 最新スコア Up5 予測ランキング: {latestScoreDate:yyyy-MM-dd} ===");
 
-        foreach (var item in ranking)
-        {
-            Console.WriteLine(
-                $"{item.Code} {item.CompanyName} Total:{item.TotalScore} Swing:{item.SwingScore} Up5Prob:{item.Up5Probability:P2}");
-        }
+        //foreach (var item in ranking)
+        //{
+        //    Console.WriteLine(
+        //        $"{item.Code} {item.CompanyName} Total:{item.TotalScore} Swing:{item.SwingScore} Up5Prob:{item.Up5Probability:P2}");
+        //}
     }
 
     private async Task<TechnicalFeatureValues?> CalculateTechnicalFeaturesAsync(
@@ -691,20 +566,24 @@ DateTime tradeDate)
         return result;
     }
 
-    private ITransformer? _loadedModel;
-    private PredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>? _predictionEngine;
+    private readonly Dictionary<string, ITransformer> _loadedModelCache = new();
 
-    private ITransformer GetOrLoadModel()
+    private readonly Dictionary<string, PredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>> _predictionEngineCache = new();
+
+    /// <summary>
+    /// 指定されたモデル名のUp5モデルを読み込む。
+    /// 同じモデルはキャッシュし、毎回zipを読み直さない。
+    /// </summary>
+    /// <param name="modelName">モデル名。拡張子なし。</param>
+    /// <returns>読み込み済みモデル。</returns>
+    private ITransformer GetOrLoadModel(string modelName)
     {
-        if (_loadedModel != null)
+        if (_loadedModelCache.TryGetValue(modelName, out var cachedModel))
         {
-            return _loadedModel;
+            return cachedModel;
         }
 
-        var modelPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "Models",
-            "up5-model.zip");
+        var modelPath = CreateModelPath(modelName);
 
         if (!File.Exists(modelPath))
         {
@@ -712,17 +591,52 @@ DateTime tradeDate)
                 $"Up5モデルが見つかりません: {modelPath}");
         }
 
-        _loadedModel = _mlContext.Model.Load(modelPath, out _);
+        var model = _mlContext.Model.Load(modelPath, out _);
 
-        return _loadedModel;
+        _loadedModelCache[modelName] = model;
+
+        return model;
     }
 
-    public async Task<decimal?> PredictAsync(StockScoreDaily score)
+    /// <summary>
+    /// 既存処理との互換性を保つため、デフォルトUp5モデルを読み込む。
+    /// </summary>
+    /// <returns>読み込み済みモデル。</returns>
+    private ITransformer GetOrLoadModel()
     {
-        var model = GetOrLoadModel();
+        return GetOrLoadModel(DefaultModelName);
+    }
 
-        _predictionEngine ??=
-            _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
+    /// <summary>
+    /// 既存処理との互換性を保つため、デフォルトUp5モデルで予測する。
+    /// </summary>
+    /// <param name="score">予測対象日の銘柄スコア。</param>
+    /// <returns>Up5上昇確率。計算不能な場合はnull。</returns>
+    public Task<decimal?> PredictAsync(StockScoreDaily score)
+    {
+        return PredictAsync(score, DefaultModelName);
+    }
+
+    /// <summary>
+    /// 指定されたモデル名のUp5モデルを使って、対象銘柄の5営業日上昇確率を予測する。
+    /// ウォークフォワード検証では、テスト年に対応するモデル名を指定する。
+    /// </summary>
+    /// <param name="score">予測対象日の銘柄スコア。</param>
+    /// <param name="modelName">使用するモデル名。例: up5_2022_2023。</param>
+    /// <returns>Up5上昇確率。計算不能な場合はnull。</returns>
+    public async Task<decimal?> PredictAsync(
+        StockScoreDaily score,
+        string modelName)
+    {
+        var model = GetOrLoadModel(modelName);
+
+        if (!_predictionEngineCache.TryGetValue(modelName, out var predictionEngine))
+        {
+            predictionEngine =
+                _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
+
+            _predictionEngineCache[modelName] = predictionEngine;
+        }
 
         var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
             score.Code,
@@ -733,7 +647,7 @@ DateTime tradeDate)
             return null;
         }
 
-        var marketFeatures = await CalculateMarketFeaturesAsync(score.ScoreDate);
+        var marketFeatures = await GetMarketFeaturesWithCacheAsync(score.ScoreDate);
 
         var input = new MlStockPredictionInput
         {
@@ -762,26 +676,51 @@ DateTime tradeDate)
             VixMomentum25 = marketFeatures.VixMomentum25
         };
 
-        var prediction = _predictionEngine.Predict(input);
+        var prediction = predictionEngine.Predict(input);
 
         return Math.Round((decimal)prediction.Probability * 100m, 4);
     }
 
-    private async Task<ITransformer> TrainBestModelAsync()
+    /// <summary>
+    /// 既存処理との互換性を保つため、全期間データでUp5モデルを学習する。
+    /// 新規のウォークフォワード検証では TrainingPeriod 指定版を使用する。
+    /// </summary>
+    /// <returns>学習済みUp5モデル。</returns>
+    private Task<ITransformer> TrainBestModelAsync()
     {
-        var inputs = await CreateTrainingInputsAsync();
+        var period = new TrainingPeriod
+        {
+            TrainFrom = DateTime.MinValue,
+            TrainTo = DateTime.MaxValue,
+            TestFrom = DateTime.MinValue,
+            TestTo = DateTime.MaxValue,
+            ModelName = DefaultModelName
+        };
+
+        return TrainBestModelAsync(period);
+    }
+
+    /// <summary>
+    /// 指定された学習期間のデータだけを使って、Up5の最良モデルを学習する。
+    /// ウォークフォワード検証では、このメソッドで未来データ混入を防ぐ。
+    /// </summary>
+    /// <param name="period">学習期間と保存モデル名を表す期間定義。</param>
+    /// <returns>学習済みUp5モデル。</returns>
+    private async Task<ITransformer> TrainBestModelAsync(TrainingPeriod period)
+    {
+        var inputs = await CreateTrainingInputsAsync(period);
+
+        if (inputs.Count < 50)
+        {
+            throw new InvalidOperationException(
+                $"Up5学習データが少なすぎます。Model:{period.ModelName}, Count:{inputs.Count}");
+        }
 
         var orderedInputs = inputs
             .OrderBy(x => x.TradeDate)
             .ToList();
 
-        var trainCount = (int)(orderedInputs.Count * 0.8);
-
-        var trainInputs = orderedInputs
-            .Take(trainCount)
-            .ToList();
-
-        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
+        var trainSet = _mlContext.Data.LoadFromEnumerable(orderedInputs);
 
         var basePipeline = CreateBasePipeline();
 
@@ -790,7 +729,74 @@ DateTime tradeDate)
                 labelColumnName: "Label",
                 featureColumnName: "Features"));
 
-        return sdcaPipeline.Fit(trainSet);
+        var fastTreePipeline = basePipeline.Append(
+            _mlContext.BinaryClassification.Trainers.FastTree(
+                labelColumnName: "Label",
+                featureColumnName: "Features",
+                numberOfLeaves: 8,
+                numberOfTrees: 100,
+                minimumExampleCountPerLeaf: 10));
+
+        // 学習期間内の最終20%を疑似検証データとして使い、採用モデルを選ぶ。
+        // 本物のウォークフォワード評価は別途 TestFrom-TestTo のバックテストで行う。
+        var validationStartIndex = (int)(orderedInputs.Count * 0.8);
+
+        var trainInputs = orderedInputs
+            .Take(validationStartIndex)
+            .ToList();
+
+        var validationInputs = orderedInputs
+            .Skip(validationStartIndex)
+            .ToList();
+
+        var modelTrainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
+        var validationSet = _mlContext.Data.LoadFromEnumerable(validationInputs);
+
+        var sdcaModel = sdcaPipeline.Fit(modelTrainSet);
+        var fastTreeModel = fastTreePipeline.Fit(modelTrainSet);
+
+        var sdcaResult = EvaluateModel(
+            modelName: "SdcaLogisticRegression",
+            model: sdcaModel,
+            testSet: validationSet);
+
+        var fastTreeResult = EvaluateModel(
+            modelName: "FastTree",
+            model: fastTreeModel,
+            testSet: validationSet);
+
+        ITransformer bestModel;
+
+        if (fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate)
+        {
+            bestModel = fastTreeModel;
+        }
+        else
+        {
+            bestModel = sdcaModel;
+        }
+
+        var bestModelName = fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate
+            ? "FastTree"
+            : "SdcaLogisticRegression";
+
+        Console.WriteLine();
+        Console.WriteLine($"=== Up5 採用モデル: {bestModelName} ===");
+        Console.WriteLine($"ModelName : {period.ModelName}");
+        Console.WriteLine($"TrainDate : {period.TrainFrom:yyyy-MM-dd} - {period.TrainTo:yyyy-MM-dd}");
+
+        Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, ModelDirectory));
+
+        var modelPath = CreateModelPath(period.ModelName);
+
+        _mlContext.Model.Save(
+            bestModel,
+            trainSet.Schema,
+            modelPath);
+
+        Console.WriteLine($"モデル保存: {modelPath}");
+
+        return bestModel;
     }
 
     private IEstimator<ITransformer> CreateBasePipeline()
@@ -821,7 +827,27 @@ DateTime tradeDate)
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
     }
 
-    private async Task<List<MlStockPredictionInput>> CreateTrainingInputsAsync()
+    /// <summary>
+    /// 既存処理との互換性を保つため、全期間を対象にUp5学習入力を作成する。
+    /// 新規のウォークフォワード検証では TrainingPeriod 指定版を使用する。
+    /// </summary>
+    /// <returns>Up5学習用入力データ。</returns>
+    private Task<List<MlStockPredictionInput>> CreateTrainingInputsAsync()
+    {
+        var period = new TrainingPeriod
+        {
+            TrainFrom = DateTime.MinValue,
+            TrainTo = DateTime.MaxValue,
+            TestFrom = DateTime.MinValue,
+            TestTo = DateTime.MaxValue,
+            ModelName = DefaultModelName
+        };
+
+        return CreateTrainingInputsAsync(period);
+    }
+
+    private async Task<List<MlStockPredictionInput>> CreateTrainingInputsAsync(
+    TrainingPeriod period)
     {
         var excludedNameKeywords = new[]
         {
@@ -841,7 +867,10 @@ DateTime tradeDate)
     };
 
         var trainingSourceRows = await _db.MlTrainingData
+            .AsNoTracking()
             .Where(x => x.FutureReturn5 != null)
+            .Where(x => x.TradeDate >= period.TrainFrom)
+            .Where(x => x.TradeDate <= period.TrainTo)
             .Join(
                 _db.Companies,
                 ml => ml.Code,
@@ -908,15 +937,27 @@ DateTime tradeDate)
         return inputs;
     }
 
+    /// <summary>
+    /// 既存処理との互換性を保つため、デフォルトUp5モデルを読み込む。
+    /// </summary>
+    /// <returns>読み込み済みモデル。</returns>
     private ITransformer LoadModel()
     {
-        if (!File.Exists(ModelPath))
-        {
-            throw new FileNotFoundException(
-                $"Up5モデルが見つかりません。先にRUN_ML_UP5_TRAINING=trueで学習してください: {ModelPath}");
-        }
+        return GetOrLoadModel(DefaultModelName);
+    }
 
-        return _mlContext.Model.Load(ModelPath, out _);
+    /// <summary>
+    /// Up5モデルの保存パスを作成する。
+    /// ウォークフォワードでは period.ModelName ごとに別ファイルへ保存する。
+    /// </summary>
+    /// <param name="modelName">モデル名。拡張子なしを想定する。</param>
+    /// <returns>モデルzipファイルのパス。</returns>
+    private static string CreateModelPath(string modelName)
+    {
+        return Path.Combine(
+            AppContext.BaseDirectory,
+            ModelDirectory,
+            $"{modelName}.zip");
     }
 
     private async Task<List<PriceDaily>> GetPriceHistoryWithCacheAsync(string code)

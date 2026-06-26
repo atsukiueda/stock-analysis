@@ -55,10 +55,22 @@ public class BacktestService
         _db = db;
     }
 
+    /// <summary>
+    /// バックテストを実行する。
+    /// ウォークフォワードでは、指定されたUp5モデルを使用する。
+    /// </summary>
+    /// <param name="startDate">開始日</param>
+    /// <param name="endDate">終了日</param>
+    /// <param name="topCount">1日あたりの候補数</param>
+    /// <param name="up5ModelName">
+    /// 使用するUp5モデル名。
+    /// nullの場合は既存のデフォルトモデルを使用する。
+    /// </param>
     public async Task RunAsync(
         DateTime startDate,
         DateTime endDate,
-        int topCount = 5)
+        int topCount = 5,
+        string? up5ModelName = null)
     {
 
         var up5Service = new MlUp5PredictionService(_db);
@@ -66,784 +78,7 @@ public class BacktestService
         var takeProfitService = new MlTakeProfitPredictionService(_db);
         var stopLossService = new MlStopLossPredictionService(_db);
 
-        var scenarios = _scenarioFactory.CreateReboundWalkForwardScenarios();
-
-        //var scenarios = new List<BacktestScenario>
-        //{
-        //new()
-        //{
-        //    Name = "TpExtreme",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_TP10",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MinExpectedTakeProfit = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_TP15",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MinExpectedTakeProfit = 15m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_TPUnder15",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MaxExpectedTakeProfit = 15m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_TP10To15",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MinExpectedTakeProfit = 10m,
-        //    MaxExpectedTakeProfit = 15m
-        //},
-        //new()
-        //{
-        //    Name = "ExpectedValueOnly",
-        //    Up5Weight = 0m,
-        //    Up10Weight = 0m,
-        //    TakeProfitWeight = 0m,
-        //    StopLossWeight = 0m,
-        //    TotalScoreWeight = 0m
-        //},
-        //new()
-        //{
-        //    Name = "ExpectedValue_TPUnder15",
-        //    Up5Weight = 0m,
-        //    Up10Weight = 0m,
-        //    TakeProfitWeight = 0m,
-        //    StopLossWeight = 0m,
-        //    TotalScoreWeight = 0m,
-        //    MaxExpectedTakeProfit = 15m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_15",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MaxMomentum25 = 15m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MaxMomentum25 = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative10",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // Momentum25 が -10% 以下の銘柄だけを対象にする。
-        //    // 2024・2025ともに M25 < -10 が最も強かったため、
-        //    // 市況条件なしで単独の有効性を検証する。
-        //    MaxMomentum25 = -10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_5",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MaxMomentum25 = 5m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_0",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-        //    MaxMomentum25 = 0m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10_TP15",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxExpectedTakeProfit = 15m,
-        //    MaxMomentum25 = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10_TP20",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxExpectedTakeProfit = 20m,
-        //    MaxMomentum25 = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10_TPUnder15",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // 現王者 TpExtreme_M25_10 の条件。
-        //    // Momentum25が10%を超える銘柄は過熱・反落リスクが高いため除外する。
-        //    MaxMomentum25 = 10m,
-
-        //    // TpExtreme_TPUnder15 の安定性を取り込む。
-        //    // TP予測が高すぎる銘柄は過熱銘柄を拾いやすいため、15%未満に制限する。
-        //    MaxExpectedTakeProfit = 15m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_0_10",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MinMomentum25 = 0m,
-        //    MaxMomentum25 = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_ExcludeMinus10To0",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // 元の王者 TpExtreme_M25_10 と同じく、
-        //    // Momentum25が10%を超える過熱銘柄は除外する。
-        //    MaxMomentum25 = 10m,
-
-        //    // ただし M25 < -10 は利益源だったため残す。
-        //    // 弱かった -10 <= M25 < 0 の帯だけを除外する。
-        //    ExcludeMomentum25Min = -10m,
-        //    ExcludeMomentum25Max = 0m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // 現時点の新王者ルール。
-        //    // Momentum25が10%を超える過熱銘柄を除外し、
-        //    // さらに弱かった -10 <= M25 < 0 の帯だけを除外する。
-        //    MaxMomentum25 = 10m,
-        //    ExcludeMomentum25Min = -10m,
-        //    ExcludeMomentum25Max = 0m,
-
-        //    // TP20〜25帯だけを除外する。
-        //    // TP15〜20とTP25以上は利益源なので残す。
-        //    ExcludeExpectedTakeProfitMin = 20m,
-        //    ExcludeExpectedTakeProfitMax = 25m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25_ExcludeTPUnder10M5To10",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxMomentum25 = 10m,
-
-        //    ExcludeMomentum25Min = -10m,
-        //    ExcludeMomentum25Max = 0m,
-
-        //    ExcludeExpectedTakeProfitMin = 20m,
-        //    ExcludeExpectedTakeProfitMax = 25m,
-
-        //    // TP < 10 かつ 5 <= M25 < 10 の弱いクロス帯を除外する。
-        //    ExcludeCrossExpectedTakeProfitMin = decimal.MinValue,
-        //    ExcludeCrossExpectedTakeProfitMax = 10m,
-        //    ExcludeCrossMomentum25Min = 5m,
-        //    ExcludeCrossMomentum25Max = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10_RiskOffOnly",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxMomentum25 = 10m,
-
-        //    AllowedRegimes = new()
-        //    {
-        //        "RiskOff",
-        //        "StrongRiskOff"
-        //    }
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10_StrongRiskOffOnly",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // Momentum25が10%を超える過熱銘柄は除外する。
-        //    MaxMomentum25 = 10m,
-
-        //    // 市場全体が強いリスクオフ判定のときだけ売買する。
-        //    // 2024・2025ともにStrongRiskOffが明確に強いため検証対象にする。
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    }
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative10_StrongRiskOffOnly",
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // Momentum25が -10% 未満の銘柄だけを対象にする。
-        //    // 2024・2025ともに M25 < -10 が最も強かったため、
-        //    // StrongRiskOffと組み合わせて本命エッジを検証する。
-        //    MaxMomentum25 = -10m,
-
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    }
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_10_StrongRiskOffOnly_TP10",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // StrongRiskOffのみ
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // 過熱除外
-        //    MaxMomentum25 = 10m,
-
-        //    // TP10未満除外
-        //    MinExpectedTakeProfit = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative10_StrongRiskOffOnly_TP10",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOff のときだけ売買する
-        //    // 今回の44件分析では、利益源がStrongRiskOffに集中しているため
-        //    // 他の市場レジームは除外する
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // Momentum25 が -10% 以下の銘柄だけを対象にする
-        //    // 44件分析では M25 < -10 が
-        //    // Trades:15 / WinRate:80.00% / PF:10.03 / NetProfit:+160,376
-        //    // と利益の中心だったため、本命条件として検証する
-        //    // ====================================
-        //    MaxMomentum25 = -10m,
-
-        //    // ====================================
-        //    // ExpectedTakeProfit が10%以上の銘柄だけを対象にする
-        //    // 現在の本命シナリオと同じTP下限を維持する
-        //    // ====================================
-        //    MinExpectedTakeProfit = 10m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative10_StrongRiskOffOnly_TP25",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOff のときだけ売買する
-        //    // 暴落後リバウンド専用戦略として検証する
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // Momentum25 が -10% 以下の銘柄だけを対象にする
-        //    // 暴落後に強く反発する候補だけを残す
-        //    // ====================================
-        //    MaxMomentum25 = -10m,
-
-        //    // ====================================
-        //    // ExpectedTakeProfit が25%以上の銘柄だけを対象にする
-        //    // 44件分析では TP>=25 かつ M25<-10 が
-        //    // Trades:7 / WinRate:100% / NetProfit:+123,311
-        //    // と最も強かったため、超厳選版として検証する
-        //    // ====================================
-        //    MinExpectedTakeProfit = 25m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_StrongRiskOffOnly_TP25",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOffのみ
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // TPモデルが25%以上と予測した銘柄のみ
-        //    // Momentum25条件なし
-        //    // ====================================
-        //    MinExpectedTakeProfit = 25m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative15_StrongRiskOffOnly_TP25",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOff のときだけ売買する
-        //    // 市場全体が強いリスクオフ状態のときだけ、
-        //    // 暴落後リバウンド狙いを実行する
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // Momentum25 が -15% 以下の銘柄だけを対象にする
-        //    // -10%では少し広いため、より強く売られた銘柄に絞る
-        //    // ====================================
-        //    MaxMomentum25 = -15m,
-
-        //    // ====================================
-        //    // TPモデルが25%以上の上昇余地を予測した銘柄だけを対象にする
-        //    // TP25以上は現在もっとも強い利益源候補
-        //    // ====================================
-        //    MinExpectedTakeProfit = 25m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative20_StrongRiskOffOnly_TP25",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOff のときだけ売買する
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // Momentum25 が -20% 以下の銘柄だけを対象にする
-        //    // かなり強く売られた銘柄に限定する超厳選条件
-        //    // ====================================
-        //    MaxMomentum25 = -20m,
-
-        //    // ====================================
-        //    // TPモデルが25%以上の上昇余地を予測した銘柄だけを対象にする
-        //    // ====================================
-        //    MinExpectedTakeProfit = 25m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative20_StrongRiskOffOnly_TP30",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOff のときだけ売買する
-        //    // 暴落後リバウンド専用戦略として検証する
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // Momentum25 が -20% 以下の銘柄だけを対象にする
-        //    // 実際の勝ちトレードは M25 -21% ～ -39% に集中していたため、
-        //    // -10%ではなく -20% を本命条件として検証する
-        //    // ====================================
-        //    MaxMomentum25 = -20m,
-
-        //    // ====================================
-        //    // ExpectedTakeProfit が30%以上の銘柄だけを対象にする
-        //    // 勝ちトレードのTP予測は32%以上に集中していたため、
-        //    // TP25より厳しい条件で利益源を確認する
-        //    // ====================================
-        //    MinExpectedTakeProfit = 30m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_Negative20_StrongRiskOffOnly_TP35",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // ====================================
-        //    // StrongRiskOff のときだけ売買する
-        //    // ====================================
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // Momentum25 が -20% 以下の銘柄だけを対象にする
-        //    // ====================================
-        //    MaxMomentum25 = -20m,
-
-        //    // ====================================
-        //    // ExpectedTakeProfit が35%以上の銘柄だけを対象にする
-        //    // TP30よりさらに厳選して、過剰最適化にならないか確認する
-        //    // ====================================
-        //    MinExpectedTakeProfit = 35m
-        //},
-        //new()
-        //{
-        //    Name = "StrongRiskOff_M25_Negative20_M5_Negative15",
-
-        //    // ====================================
-        //    // AIスコアを完全無効化
-        //    // ====================================
-        //    Up5Weight = 0.0m,
-        //    Up10Weight = 0.0m,
-        //    TakeProfitWeight = 0.0m,
-        //    StopLossWeight = 0.0m,
-
-        //    // ====================================
-        //    // TotalScoreだけでランキング
-        //    // ====================================
-        //    TotalScoreWeight = 1.0m,
-
-        //    AllowedRegimes = new()
-        //    {
-        //        "StrongRiskOff"
-        //    },
-
-        //    // ====================================
-        //    // 暴落条件
-        //    // ====================================
-        //    MaxMomentum25 = -20m,
-
-        //    // ====================================
-        //    // 直近5日急落
-        //    // ====================================
-        //    MaxMomentum5 = -15m
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_ExcludeWeak",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    ExcludeMomentum25Min = -10,
-        //    ExcludeMomentum25Max = 0
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_ReboundOnly_TP25",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxMomentum25 = -10,
-        //    MinExpectedTakeProfit = 25
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_M25_NoOverheat",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // M25 > 10% は過熱・反落リスクが高いため除外する
-        //    MaxMomentum25 = 10
-        //},
-        //new()
-        //{
-        //    Name = "TpExtreme_ReboundElite_TP25",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    // 25日で10%以上下落している売られすぎ銘柄だけを対象にする
-        //    MaxMomentum25 = -10,
-
-        //    // 予測TPが25%以上ある、反発余地の大きい銘柄だけを対象にする
-        //    MinExpectedTakeProfit = 25
-        //},
-        //new()
-        //{
-        //    Name = "ReboundElite_EV9",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxMomentum25 = -10,
-        //    MinExpectedTakeProfit = 25,
-        //    MinExpectedValue = 9
-        //},
-        //new()
-        //{
-        //    Name = "TrendSwing",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MinMomentum25 = 0,
-        //    MaxMomentum25 = 10,
-        //    MinExpectedTakeProfit = 15
-        //},
-        //new()
-        //{
-        //    Name = "TrendSwing_EV3",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MinMomentum25 = 0,
-        //    MaxMomentum25 = 10,
-        //    MinExpectedTakeProfit = 15,
-        //    MinExpectedValue = 3
-        //},
-        //new()
-        //{
-        //    Name = "Rebound_M5_20",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxMomentum25 = -10,
-        //    MaxMomentum5 = -20,
-        //    MinExpectedTakeProfit = 25,
-        //    MinExpectedValue = 9
-        //}, 
-        //new()
-        //{
-        //    Name = "Rebound_M5_15",
-
-        //    Up5Weight = 0.1m,
-        //    Up10Weight = 0.1m,
-        //    TakeProfitWeight = 0.8m,
-        //    StopLossWeight = 0.1m,
-        //    TotalScoreWeight = 0.5m,
-
-        //    MaxMomentum25 = -10,
-        //    MaxMomentum5 = -15,
-        //    MinExpectedTakeProfit = 25,
-        //    MinExpectedValue = 9
-        //},
-        //    new()
-        //    {
-        //        Name = "Rebound_StrongRiskOff",
-
-        //        Up5Weight = 0.1m,
-        //        Up10Weight = 0.1m,
-        //        TakeProfitWeight = 0.8m,
-        //        StopLossWeight = 0.1m,
-        //        TotalScoreWeight = 0.5m,
-
-        //        MaxMomentum25 = -10,
-        //        MinExpectedTakeProfit = 25,
-        //        MinExpectedValue = 9,
-
-        //        AllowedRegimes = new List<string>
-        //        {
-        //            "StrongRiskOff"
-        //        }
-        //    },
-        //    new()
-        //    {
-        //        Name = "Rebound_StrongRiskOff_T5",
-        //        Up5Weight = 0.1m,
-        //        Up10Weight = 0.1m,
-        //        TakeProfitWeight = 0.8m,
-        //        StopLossWeight = 0.1m,
-        //        TotalScoreWeight = 0.5m,
-
-        //        MaxMomentum25 = -10,
-        //        MinExpectedTakeProfit = 25,
-        //        MinExpectedValue = 9,
-        //        MaxHoldingBusinessDays = 5,
-
-        //        AllowedRegimes = new List<string> { "StrongRiskOff" }
-
-        //    },
-        //    new()
-        //    {
-        //        Name = "Rebound_StrongRiskOff_T7",
-        //        Up5Weight = 0.1m,
-        //        Up10Weight = 0.1m,
-        //        TakeProfitWeight = 0.8m,
-        //        StopLossWeight = 0.1m,
-        //        TotalScoreWeight = 0.5m,
-
-        //        MaxMomentum25 = -10,
-        //        MinExpectedTakeProfit = 25,
-        //        MinExpectedValue = 9,
-        //        MaxHoldingBusinessDays = 7,
-        //    },
-        //    new()
-        //    {
-        //        Name = "Rebound_StrongRiskOff_T10",
-        //        Up5Weight = 0.1m,
-        //        Up10Weight = 0.1m,
-        //        TakeProfitWeight = 0.8m,
-        //        StopLossWeight = 0.1m,
-        //        TotalScoreWeight = 0.5m,
-
-        //        MaxMomentum25 = -10,
-        //        MinExpectedTakeProfit = 25,
-        //        MinExpectedValue = 9,
-        //        MaxHoldingBusinessDays = 10,
-
-        //        AllowedRegimes = new List<string> { "StrongRiskOff" }
-        //    },
-        //    new()
-        //    {
-        //        Name = "Rebound_StrongRiskOff_T15",
-        //        Up5Weight = 0.1m,
-        //        Up10Weight = 0.1m,
-        //        TakeProfitWeight = 0.8m,
-        //        StopLossWeight = 0.1m,
-        //        TotalScoreWeight = 0.5m,
-
-        //        MaxMomentum25 = -10,
-        //        MinExpectedTakeProfit = 25,
-        //        MinExpectedValue = 9,
-        //        MaxHoldingBusinessDays = 15,
-
-        //        AllowedRegimes = new List<string> { "StrongRiskOff" }
-        //    }
-        //};
+        var scenarios = _scenarioFactory.CreateReboundWalkForwardBaseScenarios();
 
         var resultsByScenario = scenarios.ToDictionary(
             x => x.Name,
@@ -875,7 +110,8 @@ public class BacktestService
                 up5Service,
                 up10Service,
                 takeProfitService,
-                stopLossService);
+                stopLossService,
+                up5ModelName);
 
             foreach (var scenario in scenarios)
             {
@@ -950,7 +186,8 @@ public class BacktestService
         MlUp5PredictionService up5Service,
         MlUp10PredictionService up10Service,
         MlTakeProfitPredictionService takeProfitService,
-        MlStopLossPredictionService stopLossService)
+        MlStopLossPredictionService stopLossService,
+        string? up5ModelName)
     {
         var executionSettings = new BacktestExecutionSettings();
 
@@ -995,7 +232,20 @@ public class BacktestService
 
             var totalScore = row.Score.TotalScore + bonus;
 
-            var up5Probability = await up5Service.PredictAsync(row.Score);
+            decimal? up5Probability;
+
+            if (string.IsNullOrWhiteSpace(up5ModelName))
+            {
+                up5Probability =
+                    await up5Service.PredictAsync(row.Score);
+            }
+            else
+            {
+                up5Probability =
+                    await up5Service.PredictAsync(
+                        row.Score,
+                        up5ModelName);
+            }
             var up10Probability = await up10Service.PredictAsync(row.Score);
             var expectedTakeProfit = await takeProfitService.PredictAsync(row.Score);
             var expectedStopLoss = await stopLossService.PredictAsync(row.Score);
@@ -1368,18 +618,18 @@ public class BacktestService
                 });
             }
         }
-        //if (entryDate.Year == 2024 && sourceRows.Count > 0)
-        //{
-        //    Console.WriteLine(
-        //        $"Date:{entryDate:yyyy-MM-dd} " +
-        //        $"Source:{sourceRows.Count} " +
-        //        $"Ranking:{rankingRows.Count} " +
-        //        $"NullUp5:{nullUp5Count} " +
-        //        $"NullUp10:{nullUp10Count} " +
-        //        $"NullTP:{nullTakeProfitCount} " +
-        //        $"NullSL:{nullStopLossCount} " +
-        //        $"NullM25:{nullMomentum25Count}");
-        //}
+        if (entryDate.Year == 2024 && sourceRows.Count > 0)
+        {
+            Console.WriteLine(
+                $"Date:{entryDate:yyyy-MM-dd} " +
+                $"Source:{sourceRows.Count} " +
+                $"Ranking:{rankingRows.Count} " +
+                $"NullUp5:{nullUp5Count} " +
+                $"NullUp10:{nullUp10Count} " +
+                $"NullTP:{nullTakeProfitCount} " +
+                $"NullSL:{nullStopLossCount} " +
+                $"NullM25:{nullMomentum25Count}");
+        }
 
         return resultsByScenario;
     }
