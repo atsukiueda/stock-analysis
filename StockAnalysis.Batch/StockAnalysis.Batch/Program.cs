@@ -1137,8 +1137,8 @@ if (RUN_STOCK_SCORE_HISTORY)
         new StockScoreService(db);
 
     await stockScoreService.GenerateHistoryAsync(
-        new DateTime(2025, 1, 1),
-        new DateTime(2025, 12, 31));
+        new DateTime(2024, 1, 1),
+        new DateTime(2024, 12, 31));
 
     Console.WriteLine("=== 株式スコア履歴生成完了 ===");
 }
@@ -1233,7 +1233,7 @@ if (RUN_BACKTEST)
     var service = new BacktestService(db);
 
     await service.RunAsync(
-        new DateTime(2025, 1, 1),
+        new DateTime(2024, 1, 1),
         new DateTime(2025, 12, 31),
         topCount: 5);
 

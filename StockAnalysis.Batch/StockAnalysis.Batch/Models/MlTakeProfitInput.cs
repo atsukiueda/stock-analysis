@@ -38,15 +38,9 @@ public class MlTakeProfitInput
 
     public float Ma75Slope { get; set; }
 
+    // 日本株市場の地合いとして利用。
+    // Feature Importance は低かったが、まずは残して比較する。
     public float TopixMomentum25 { get; set; }
-
-    public float Sp500Momentum25 { get; set; }
-
-    public float NasdaqMomentum25 { get; set; }
-
-    public float UsdJpyMomentum25 { get; set; }
-
-    public float VixMomentum25 { get; set; }
 
     [ColumnName("Label")]
     public float FutureMaxReturn10 { get; set; }

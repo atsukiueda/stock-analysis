@@ -46,4 +46,22 @@ public class BacktestTradeResult
 
     public decimal Momentum25 { get; set; }
 
+    // 直近5営業日の騰落率
+    public decimal Momentum5 { get; set; }
+
+    public decimal FinancialScore { get; set; }
+
+    public decimal GrowthScore { get; set; }
+
+    public decimal TechnicalScore { get; set; }
+
+    public decimal SwingScore { get; set; }
+
+    public decimal TotalScore { get; set; }
+
+    public decimal DeviationFromMa25 { get; set; }
+
+    public decimal ClosePositionInRange25 { get; set; }
+
+    public decimal VolumeRatio5 { get; set; }
 }

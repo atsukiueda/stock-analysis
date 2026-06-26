@@ -105,24 +105,24 @@ public class MlTakeProfitPredictionService
     {
         var excludedNameKeywords = new[]
         {
-            "ＥＴＦ",
-            "ETF",
-            "投信",
-            "上場投信",
-            "インデックスファンド",
-            "ＮＥＸＴ　ＦＵＮＤＳ",
-            "MAXIS",
-            "ｉＦｒｅｅＥＴＦ",
-            "iFreeETF",
-            "グローバルＸ",
-            "REIT",
-            "リート",
-            "ETN",
-            "ＳＰＤＲ",
-            "SPDR",
-            "ゴールド・シェア",
-            "Gold Shares"
-        };
+        "ＥＴＦ",
+        "ETF",
+        "投信",
+        "上場投信",
+        "インデックスファンド",
+        "ＮＥＸＴ　ＦＵＮＤＳ",
+        "MAXIS",
+        "ｉＦｒｅｅＥＴＦ",
+        "iFreeETF",
+        "グローバルＸ",
+        "REIT",
+        "リート",
+        "ETN",
+        "ＳＰＤＲ",
+        "SPDR",
+        "ゴールド・シェア",
+        "Gold Shares"
+    };
 
         var trainingSourceRows = await _db.MlTrainingData
             .Where(x => x.FutureMaxReturn10 != null)
@@ -149,6 +149,8 @@ public class MlTakeProfitPredictionService
                 row.Ml.Code,
                 row.Ml.TradeDate);
 
+            // 価格履歴が不足している銘柄・日付は、
+            // テクニカル特徴量を正しく作れないため学習対象から外す。
             if (technicalFeatures == null)
             {
                 continue;
@@ -179,11 +181,18 @@ public class MlTakeProfitPredictionService
                 Ma25Slope = technicalFeatures.Ma25Slope,
                 Ma75Slope = technicalFeatures.Ma75Slope,
 
+                // TakeProfitモデルでは、米国指数・為替・VIX系の重要度がほぼゼロだった。
+                // そのため、まずTPモデルだけから以下を削除する。
+                //
+                // 削除対象：
+                // - Sp500Momentum25
+                // - NasdaqMomentum25
+                // - UsdJpyMomentum25
+                // - VixMomentum25
+                //
+                // TopixMomentum25 は日本株市場そのものの地合いを表すため、
+                // 今回は残して比較する。
                 TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25,
 
                 FutureMaxReturn10 = (float)row.Ml.FutureMaxReturn10!.Value
             });
@@ -196,6 +205,9 @@ public class MlTakeProfitPredictionService
     {
         return _mlContext.Transforms.Concatenate(
                 "Features",
+
+                // 財務・成長・配当などのスコア系特徴量。
+                // これは既存スクリーニング評価をTPモデルにも反映するために残す。
                 nameof(MlTakeProfitInput.FinancialScore),
                 nameof(MlTakeProfitInput.GrowthScore),
                 nameof(MlTakeProfitInput.DividendScore),
@@ -205,6 +217,10 @@ public class MlTakeProfitPredictionService
                 nameof(MlTakeProfitInput.TechnicalScore),
                 nameof(MlTakeProfitInput.SwingScore),
                 nameof(MlTakeProfitInput.MarketScore),
+
+                // 銘柄自身の値動き・出来高・移動平均系特徴量。
+                // 前回のFeature ImportanceでMomentum25が最重要だったため、
+                // このブロックは今回のTPモデル改善で特に重要。
                 nameof(MlTakeProfitInput.Momentum5),
                 nameof(MlTakeProfitInput.Momentum25),
                 nameof(MlTakeProfitInput.DeviationFromMa25),
@@ -212,11 +228,14 @@ public class MlTakeProfitPredictionService
                 nameof(MlTakeProfitInput.ClosePositionInRange25),
                 nameof(MlTakeProfitInput.Ma25Slope),
                 nameof(MlTakeProfitInput.Ma75Slope),
-                nameof(MlTakeProfitInput.TopixMomentum25),
-                nameof(MlTakeProfitInput.Sp500Momentum25),
-                nameof(MlTakeProfitInput.NasdaqMomentum25),
-                nameof(MlTakeProfitInput.UsdJpyMomentum25),
-                nameof(MlTakeProfitInput.VixMomentum25))
+
+                // 日本株市場全体の地合い。
+                // 米国指数・為替・VIX系は重要度がほぼゼロだったため削除するが、
+                // TOPIXだけは日本株全体の説明変数として一旦残す。
+                nameof(MlTakeProfitInput.TopixMomentum25))
+
+            // 特徴量ごとのスケール差をならす。
+            // スコア系と騰落率系が混在するため、MinMax正規化を維持する。
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
     }
 
@@ -304,11 +323,10 @@ public class MlTakeProfitPredictionService
                 Ma25Slope = technicalFeatures.Ma25Slope,
                 Ma75Slope = technicalFeatures.Ma75Slope,
 
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25
+                // TakeProfitモデルではFeature Importanceの結果から
+                // 米国指数・為替・VIX系の寄与がほぼゼロだった。
+                // 学習時と予測時の特徴量を一致させるため、ここでも削除する。
+                TopixMomentum25 = marketFeatures.TopixMomentum25
             };
 
             var prediction = predictionEngine.Predict(input);
@@ -601,11 +619,7 @@ public class MlTakeProfitPredictionService
                 Ma25Slope = technicalFeatures.Ma25Slope,
                 Ma75Slope = technicalFeatures.Ma75Slope,
 
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25
+                TopixMomentum25 = marketFeatures.TopixMomentum25
             });
 
             codeList.Add(score.Code);
@@ -701,11 +715,7 @@ public class MlTakeProfitPredictionService
             Ma25Slope = technicalFeatures.Ma25Slope,
             Ma75Slope = technicalFeatures.Ma75Slope,
 
-            TopixMomentum25 = marketFeatures.TopixMomentum25,
-            Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-            NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-            UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-            VixMomentum25 = marketFeatures.VixMomentum25
+            TopixMomentum25 = marketFeatures.TopixMomentum25
         };
 
         var prediction = _predictionEngine.Predict(input);
@@ -840,28 +850,28 @@ public class MlTakeProfitPredictionService
 
         var featureNames = new[]
         {
-        nameof(MlTakeProfitInput.FinancialScore),
-        nameof(MlTakeProfitInput.GrowthScore),
-        nameof(MlTakeProfitInput.DividendScore),
-        nameof(MlTakeProfitInput.RoeScore),
-        nameof(MlTakeProfitInput.PerScore),
-        nameof(MlTakeProfitInput.PbrScore),
-        nameof(MlTakeProfitInput.TechnicalScore),
-        nameof(MlTakeProfitInput.SwingScore),
-        nameof(MlTakeProfitInput.MarketScore),
-        nameof(MlTakeProfitInput.Momentum5),
-        nameof(MlTakeProfitInput.Momentum25),
-        nameof(MlTakeProfitInput.DeviationFromMa25),
-        nameof(MlTakeProfitInput.VolumeRatio5),
-        nameof(MlTakeProfitInput.ClosePositionInRange25),
-        nameof(MlTakeProfitInput.Ma25Slope),
-        nameof(MlTakeProfitInput.Ma75Slope),
-        nameof(MlTakeProfitInput.TopixMomentum25),
-        nameof(MlTakeProfitInput.Sp500Momentum25),
-        nameof(MlTakeProfitInput.NasdaqMomentum25),
-        nameof(MlTakeProfitInput.UsdJpyMomentum25),
-        nameof(MlTakeProfitInput.VixMomentum25)
-    };
+            nameof(MlTakeProfitInput.FinancialScore),
+            nameof(MlTakeProfitInput.GrowthScore),
+            nameof(MlTakeProfitInput.DividendScore),
+            nameof(MlTakeProfitInput.RoeScore),
+            nameof(MlTakeProfitInput.PerScore),
+            nameof(MlTakeProfitInput.PbrScore),
+            nameof(MlTakeProfitInput.TechnicalScore),
+            nameof(MlTakeProfitInput.SwingScore),
+            nameof(MlTakeProfitInput.MarketScore),
+        
+            nameof(MlTakeProfitInput.Momentum5),
+            nameof(MlTakeProfitInput.Momentum25),
+            nameof(MlTakeProfitInput.DeviationFromMa25),
+            nameof(MlTakeProfitInput.VolumeRatio5),
+            nameof(MlTakeProfitInput.ClosePositionInRange25),
+            nameof(MlTakeProfitInput.Ma25Slope),
+            nameof(MlTakeProfitInput.Ma75Slope),
+        
+            // 日本株市場全体の地合い。
+            // 今回は比較のため残す。
+            nameof(MlTakeProfitInput.TopixMomentum25)
+        };
 
         Console.WriteLine();
         Console.WriteLine("=== TakeProfit 特徴量重要度 ===");

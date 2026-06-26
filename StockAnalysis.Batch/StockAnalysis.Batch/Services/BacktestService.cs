@@ -1,6 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
+using StockAnalysis.Batch.Backtest;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
+using System.Text;
+using StockAnalysis.Batch.Backtest.Analysis;
+using StockAnalysis.Batch.Backtest.Report;
+using StockAnalysis.Batch.Backtest.Scenario;
 
 namespace StockAnalysis.Batch.Services;
 
@@ -25,6 +31,11 @@ public sealed class BacktestExecutionSettings
 
 public class BacktestService
 {
+    private const bool ShowMomentum25Analysis = true;
+    private const bool ShowMomentum5Analysis = true;
+    private const bool ShowRegimeAnalysis = false;
+    private const bool ShowExpectedTpAnalysis = false;
+
     private readonly StockAnalysisDbContext _db;
 
     private readonly Dictionary<string, decimal?> _entryPriceCache = new();
@@ -32,6 +43,12 @@ public class BacktestService
     private readonly Dictionary<string, List<PriceDaily>> _futurePricesCache = new();
 
     private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
+
+    private readonly BacktestAnalyzer _backtestAnalyzer = new();
+
+    private readonly BacktestReporter _backtestReporter = new();
+
+    private readonly ScenarioFactory _scenarioFactory = new();
 
     public BacktestService(StockAnalysisDbContext db)
     {
@@ -49,234 +66,784 @@ public class BacktestService
         var takeProfitService = new MlTakeProfitPredictionService(_db);
         var stopLossService = new MlStopLossPredictionService(_db);
 
-        var scenarios = new List<BacktestScenario>
-        {
-            new()
-            {
-                Name = "TpExtreme",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m
-            },
-            new()
-            {
-                Name = "TpExtreme_TP10",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MinExpectedTakeProfit = 10m
-            },
-            new()
-            {
-                Name = "TpExtreme_TP15",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MinExpectedTakeProfit = 15m
-            },
-            new()
-            {
-                Name = "TpExtreme_TPUnder15",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MaxExpectedTakeProfit = 15m
-            },
-            new()
-            {
-                Name = "TpExtreme_TP10To15",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MinExpectedTakeProfit = 10m,
-                MaxExpectedTakeProfit = 15m
-            },
-            new()
-            {
-                Name = "ExpectedValueOnly",
-                Up5Weight = 0m,
-                Up10Weight = 0m,
-                TakeProfitWeight = 0m,
-                StopLossWeight = 0m,
-                TotalScoreWeight = 0m
-            },
-            new()
-            {
-                Name = "ExpectedValue_TPUnder15",
-                Up5Weight = 0m,
-                Up10Weight = 0m,
-                TakeProfitWeight = 0m,
-                StopLossWeight = 0m,
-                TotalScoreWeight = 0m,
-                MaxExpectedTakeProfit = 15m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_15",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MaxMomentum25 = 15m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_10",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MaxMomentum25 = 10m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_5",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MaxMomentum25 = 5m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_0",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-                MaxMomentum25 = 0m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_10_TP15",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
+        var scenarios = _scenarioFactory.CreateReboundWalkForwardScenarios();
 
-                MaxExpectedTakeProfit = 15m,
-                MaxMomentum25 = 10m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_10_TP20",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-            
-                MaxExpectedTakeProfit = 20m,
-                MaxMomentum25 = 10m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_10_TPUnder15",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
+        //var scenarios = new List<BacktestScenario>
+        //{
+        //new()
+        //{
+        //    Name = "TpExtreme",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_TP10",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MinExpectedTakeProfit = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_TP15",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MinExpectedTakeProfit = 15m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_TPUnder15",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MaxExpectedTakeProfit = 15m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_TP10To15",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MinExpectedTakeProfit = 10m,
+        //    MaxExpectedTakeProfit = 15m
+        //},
+        //new()
+        //{
+        //    Name = "ExpectedValueOnly",
+        //    Up5Weight = 0m,
+        //    Up10Weight = 0m,
+        //    TakeProfitWeight = 0m,
+        //    StopLossWeight = 0m,
+        //    TotalScoreWeight = 0m
+        //},
+        //new()
+        //{
+        //    Name = "ExpectedValue_TPUnder15",
+        //    Up5Weight = 0m,
+        //    Up10Weight = 0m,
+        //    TakeProfitWeight = 0m,
+        //    StopLossWeight = 0m,
+        //    TotalScoreWeight = 0m,
+        //    MaxExpectedTakeProfit = 15m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_15",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MaxMomentum25 = 15m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MaxMomentum25 = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative10",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
 
-                // 現王者 TpExtreme_M25_10 の条件。
-                // Momentum25が10%を超える銘柄は過熱・反落リスクが高いため除外する。
-                MaxMomentum25 = 10m,
+        //    // Momentum25 が -10% 以下の銘柄だけを対象にする。
+        //    // 2024・2025ともに M25 < -10 が最も強かったため、
+        //    // 市況条件なしで単独の有効性を検証する。
+        //    MaxMomentum25 = -10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_5",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MaxMomentum25 = 5m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_0",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+        //    MaxMomentum25 = 0m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10_TP15",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
 
-                // TpExtreme_TPUnder15 の安定性を取り込む。
-                // TP予測が高すぎる銘柄は過熱銘柄を拾いやすいため、15%未満に制限する。
-                MaxExpectedTakeProfit = 15m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_0_10",
-            
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-            
-                MinMomentum25 = 0m,
-                MaxMomentum25 = 10m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_ExcludeMinus10To0",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-            
-                // 元の王者 TpExtreme_M25_10 と同じく、
-                // Momentum25が10%を超える過熱銘柄は除外する。
-                MaxMomentum25 = 10m,
-            
-                // ただし M25 < -10 は利益源だったため残す。
-                // 弱かった -10 <= M25 < 0 の帯だけを除外する。
-                ExcludeMomentum25Min = -10m,
-                ExcludeMomentum25Max = 0m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-            
-                // 現時点の新王者ルール。
-                // Momentum25が10%を超える過熱銘柄を除外し、
-                // さらに弱かった -10 <= M25 < 0 の帯だけを除外する。
-                MaxMomentum25 = 10m,
-                ExcludeMomentum25Min = -10m,
-                ExcludeMomentum25Max = 0m,
-            
-                // TP20〜25帯だけを除外する。
-                // TP15〜20とTP25以上は利益源なので残す。
-                ExcludeExpectedTakeProfitMin = 20m,
-                ExcludeExpectedTakeProfitMax = 25m
-            },
-            new()
-            {
-                Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25_ExcludeTPUnder10M5To10",
-                Up5Weight = 0.1m,
-                Up10Weight = 0.1m,
-                TakeProfitWeight = 0.8m,
-                StopLossWeight = 0.1m,
-                TotalScoreWeight = 0.5m,
-            
-                MaxMomentum25 = 10m,
-            
-                ExcludeMomentum25Min = -10m,
-                ExcludeMomentum25Max = 0m,
-            
-                ExcludeExpectedTakeProfitMin = 20m,
-                ExcludeExpectedTakeProfitMax = 25m,
-            
-                // TP < 10 かつ 5 <= M25 < 10 の弱いクロス帯を除外する。
-                ExcludeCrossExpectedTakeProfitMin = decimal.MinValue,
-                ExcludeCrossExpectedTakeProfitMax = 10m,
-                ExcludeCrossMomentum25Min = 5m,
-                ExcludeCrossMomentum25Max = 10m
-            },
-        };
+        //    MaxExpectedTakeProfit = 15m,
+        //    MaxMomentum25 = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10_TP20",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxExpectedTakeProfit = 20m,
+        //    MaxMomentum25 = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10_TPUnder15",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // 現王者 TpExtreme_M25_10 の条件。
+        //    // Momentum25が10%を超える銘柄は過熱・反落リスクが高いため除外する。
+        //    MaxMomentum25 = 10m,
+
+        //    // TpExtreme_TPUnder15 の安定性を取り込む。
+        //    // TP予測が高すぎる銘柄は過熱銘柄を拾いやすいため、15%未満に制限する。
+        //    MaxExpectedTakeProfit = 15m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_0_10",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MinMomentum25 = 0m,
+        //    MaxMomentum25 = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_ExcludeMinus10To0",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // 元の王者 TpExtreme_M25_10 と同じく、
+        //    // Momentum25が10%を超える過熱銘柄は除外する。
+        //    MaxMomentum25 = 10m,
+
+        //    // ただし M25 < -10 は利益源だったため残す。
+        //    // 弱かった -10 <= M25 < 0 の帯だけを除外する。
+        //    ExcludeMomentum25Min = -10m,
+        //    ExcludeMomentum25Max = 0m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // 現時点の新王者ルール。
+        //    // Momentum25が10%を超える過熱銘柄を除外し、
+        //    // さらに弱かった -10 <= M25 < 0 の帯だけを除外する。
+        //    MaxMomentum25 = 10m,
+        //    ExcludeMomentum25Min = -10m,
+        //    ExcludeMomentum25Max = 0m,
+
+        //    // TP20〜25帯だけを除外する。
+        //    // TP15〜20とTP25以上は利益源なので残す。
+        //    ExcludeExpectedTakeProfitMin = 20m,
+        //    ExcludeExpectedTakeProfitMax = 25m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_ExcludeMinus10To0_ExcludeTP20To25_ExcludeTPUnder10M5To10",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxMomentum25 = 10m,
+
+        //    ExcludeMomentum25Min = -10m,
+        //    ExcludeMomentum25Max = 0m,
+
+        //    ExcludeExpectedTakeProfitMin = 20m,
+        //    ExcludeExpectedTakeProfitMax = 25m,
+
+        //    // TP < 10 かつ 5 <= M25 < 10 の弱いクロス帯を除外する。
+        //    ExcludeCrossExpectedTakeProfitMin = decimal.MinValue,
+        //    ExcludeCrossExpectedTakeProfitMax = 10m,
+        //    ExcludeCrossMomentum25Min = 5m,
+        //    ExcludeCrossMomentum25Max = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10_RiskOffOnly",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxMomentum25 = 10m,
+
+        //    AllowedRegimes = new()
+        //    {
+        //        "RiskOff",
+        //        "StrongRiskOff"
+        //    }
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10_StrongRiskOffOnly",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // Momentum25が10%を超える過熱銘柄は除外する。
+        //    MaxMomentum25 = 10m,
+
+        //    // 市場全体が強いリスクオフ判定のときだけ売買する。
+        //    // 2024・2025ともにStrongRiskOffが明確に強いため検証対象にする。
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    }
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative10_StrongRiskOffOnly",
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // Momentum25が -10% 未満の銘柄だけを対象にする。
+        //    // 2024・2025ともに M25 < -10 が最も強かったため、
+        //    // StrongRiskOffと組み合わせて本命エッジを検証する。
+        //    MaxMomentum25 = -10m,
+
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    }
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_10_StrongRiskOffOnly_TP10",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // StrongRiskOffのみ
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // 過熱除外
+        //    MaxMomentum25 = 10m,
+
+        //    // TP10未満除外
+        //    MinExpectedTakeProfit = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative10_StrongRiskOffOnly_TP10",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOff のときだけ売買する
+        //    // 今回の44件分析では、利益源がStrongRiskOffに集中しているため
+        //    // 他の市場レジームは除外する
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // Momentum25 が -10% 以下の銘柄だけを対象にする
+        //    // 44件分析では M25 < -10 が
+        //    // Trades:15 / WinRate:80.00% / PF:10.03 / NetProfit:+160,376
+        //    // と利益の中心だったため、本命条件として検証する
+        //    // ====================================
+        //    MaxMomentum25 = -10m,
+
+        //    // ====================================
+        //    // ExpectedTakeProfit が10%以上の銘柄だけを対象にする
+        //    // 現在の本命シナリオと同じTP下限を維持する
+        //    // ====================================
+        //    MinExpectedTakeProfit = 10m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative10_StrongRiskOffOnly_TP25",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOff のときだけ売買する
+        //    // 暴落後リバウンド専用戦略として検証する
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // Momentum25 が -10% 以下の銘柄だけを対象にする
+        //    // 暴落後に強く反発する候補だけを残す
+        //    // ====================================
+        //    MaxMomentum25 = -10m,
+
+        //    // ====================================
+        //    // ExpectedTakeProfit が25%以上の銘柄だけを対象にする
+        //    // 44件分析では TP>=25 かつ M25<-10 が
+        //    // Trades:7 / WinRate:100% / NetProfit:+123,311
+        //    // と最も強かったため、超厳選版として検証する
+        //    // ====================================
+        //    MinExpectedTakeProfit = 25m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_StrongRiskOffOnly_TP25",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOffのみ
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // TPモデルが25%以上と予測した銘柄のみ
+        //    // Momentum25条件なし
+        //    // ====================================
+        //    MinExpectedTakeProfit = 25m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative15_StrongRiskOffOnly_TP25",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOff のときだけ売買する
+        //    // 市場全体が強いリスクオフ状態のときだけ、
+        //    // 暴落後リバウンド狙いを実行する
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // Momentum25 が -15% 以下の銘柄だけを対象にする
+        //    // -10%では少し広いため、より強く売られた銘柄に絞る
+        //    // ====================================
+        //    MaxMomentum25 = -15m,
+
+        //    // ====================================
+        //    // TPモデルが25%以上の上昇余地を予測した銘柄だけを対象にする
+        //    // TP25以上は現在もっとも強い利益源候補
+        //    // ====================================
+        //    MinExpectedTakeProfit = 25m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative20_StrongRiskOffOnly_TP25",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOff のときだけ売買する
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // Momentum25 が -20% 以下の銘柄だけを対象にする
+        //    // かなり強く売られた銘柄に限定する超厳選条件
+        //    // ====================================
+        //    MaxMomentum25 = -20m,
+
+        //    // ====================================
+        //    // TPモデルが25%以上の上昇余地を予測した銘柄だけを対象にする
+        //    // ====================================
+        //    MinExpectedTakeProfit = 25m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative20_StrongRiskOffOnly_TP30",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOff のときだけ売買する
+        //    // 暴落後リバウンド専用戦略として検証する
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // Momentum25 が -20% 以下の銘柄だけを対象にする
+        //    // 実際の勝ちトレードは M25 -21% ～ -39% に集中していたため、
+        //    // -10%ではなく -20% を本命条件として検証する
+        //    // ====================================
+        //    MaxMomentum25 = -20m,
+
+        //    // ====================================
+        //    // ExpectedTakeProfit が30%以上の銘柄だけを対象にする
+        //    // 勝ちトレードのTP予測は32%以上に集中していたため、
+        //    // TP25より厳しい条件で利益源を確認する
+        //    // ====================================
+        //    MinExpectedTakeProfit = 30m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_Negative20_StrongRiskOffOnly_TP35",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // ====================================
+        //    // StrongRiskOff のときだけ売買する
+        //    // ====================================
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // Momentum25 が -20% 以下の銘柄だけを対象にする
+        //    // ====================================
+        //    MaxMomentum25 = -20m,
+
+        //    // ====================================
+        //    // ExpectedTakeProfit が35%以上の銘柄だけを対象にする
+        //    // TP30よりさらに厳選して、過剰最適化にならないか確認する
+        //    // ====================================
+        //    MinExpectedTakeProfit = 35m
+        //},
+        //new()
+        //{
+        //    Name = "StrongRiskOff_M25_Negative20_M5_Negative15",
+
+        //    // ====================================
+        //    // AIスコアを完全無効化
+        //    // ====================================
+        //    Up5Weight = 0.0m,
+        //    Up10Weight = 0.0m,
+        //    TakeProfitWeight = 0.0m,
+        //    StopLossWeight = 0.0m,
+
+        //    // ====================================
+        //    // TotalScoreだけでランキング
+        //    // ====================================
+        //    TotalScoreWeight = 1.0m,
+
+        //    AllowedRegimes = new()
+        //    {
+        //        "StrongRiskOff"
+        //    },
+
+        //    // ====================================
+        //    // 暴落条件
+        //    // ====================================
+        //    MaxMomentum25 = -20m,
+
+        //    // ====================================
+        //    // 直近5日急落
+        //    // ====================================
+        //    MaxMomentum5 = -15m
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_ExcludeWeak",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    ExcludeMomentum25Min = -10,
+        //    ExcludeMomentum25Max = 0
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_ReboundOnly_TP25",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxMomentum25 = -10,
+        //    MinExpectedTakeProfit = 25
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_M25_NoOverheat",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // M25 > 10% は過熱・反落リスクが高いため除外する
+        //    MaxMomentum25 = 10
+        //},
+        //new()
+        //{
+        //    Name = "TpExtreme_ReboundElite_TP25",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    // 25日で10%以上下落している売られすぎ銘柄だけを対象にする
+        //    MaxMomentum25 = -10,
+
+        //    // 予測TPが25%以上ある、反発余地の大きい銘柄だけを対象にする
+        //    MinExpectedTakeProfit = 25
+        //},
+        //new()
+        //{
+        //    Name = "ReboundElite_EV9",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxMomentum25 = -10,
+        //    MinExpectedTakeProfit = 25,
+        //    MinExpectedValue = 9
+        //},
+        //new()
+        //{
+        //    Name = "TrendSwing",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MinMomentum25 = 0,
+        //    MaxMomentum25 = 10,
+        //    MinExpectedTakeProfit = 15
+        //},
+        //new()
+        //{
+        //    Name = "TrendSwing_EV3",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MinMomentum25 = 0,
+        //    MaxMomentum25 = 10,
+        //    MinExpectedTakeProfit = 15,
+        //    MinExpectedValue = 3
+        //},
+        //new()
+        //{
+        //    Name = "Rebound_M5_20",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxMomentum25 = -10,
+        //    MaxMomentum5 = -20,
+        //    MinExpectedTakeProfit = 25,
+        //    MinExpectedValue = 9
+        //}, 
+        //new()
+        //{
+        //    Name = "Rebound_M5_15",
+
+        //    Up5Weight = 0.1m,
+        //    Up10Weight = 0.1m,
+        //    TakeProfitWeight = 0.8m,
+        //    StopLossWeight = 0.1m,
+        //    TotalScoreWeight = 0.5m,
+
+        //    MaxMomentum25 = -10,
+        //    MaxMomentum5 = -15,
+        //    MinExpectedTakeProfit = 25,
+        //    MinExpectedValue = 9
+        //},
+        //    new()
+        //    {
+        //        Name = "Rebound_StrongRiskOff",
+
+        //        Up5Weight = 0.1m,
+        //        Up10Weight = 0.1m,
+        //        TakeProfitWeight = 0.8m,
+        //        StopLossWeight = 0.1m,
+        //        TotalScoreWeight = 0.5m,
+
+        //        MaxMomentum25 = -10,
+        //        MinExpectedTakeProfit = 25,
+        //        MinExpectedValue = 9,
+
+        //        AllowedRegimes = new List<string>
+        //        {
+        //            "StrongRiskOff"
+        //        }
+        //    },
+        //    new()
+        //    {
+        //        Name = "Rebound_StrongRiskOff_T5",
+        //        Up5Weight = 0.1m,
+        //        Up10Weight = 0.1m,
+        //        TakeProfitWeight = 0.8m,
+        //        StopLossWeight = 0.1m,
+        //        TotalScoreWeight = 0.5m,
+
+        //        MaxMomentum25 = -10,
+        //        MinExpectedTakeProfit = 25,
+        //        MinExpectedValue = 9,
+        //        MaxHoldingBusinessDays = 5,
+
+        //        AllowedRegimes = new List<string> { "StrongRiskOff" }
+
+        //    },
+        //    new()
+        //    {
+        //        Name = "Rebound_StrongRiskOff_T7",
+        //        Up5Weight = 0.1m,
+        //        Up10Weight = 0.1m,
+        //        TakeProfitWeight = 0.8m,
+        //        StopLossWeight = 0.1m,
+        //        TotalScoreWeight = 0.5m,
+
+        //        MaxMomentum25 = -10,
+        //        MinExpectedTakeProfit = 25,
+        //        MinExpectedValue = 9,
+        //        MaxHoldingBusinessDays = 7,
+        //    },
+        //    new()
+        //    {
+        //        Name = "Rebound_StrongRiskOff_T10",
+        //        Up5Weight = 0.1m,
+        //        Up10Weight = 0.1m,
+        //        TakeProfitWeight = 0.8m,
+        //        StopLossWeight = 0.1m,
+        //        TotalScoreWeight = 0.5m,
+
+        //        MaxMomentum25 = -10,
+        //        MinExpectedTakeProfit = 25,
+        //        MinExpectedValue = 9,
+        //        MaxHoldingBusinessDays = 10,
+
+        //        AllowedRegimes = new List<string> { "StrongRiskOff" }
+        //    },
+        //    new()
+        //    {
+        //        Name = "Rebound_StrongRiskOff_T15",
+        //        Up5Weight = 0.1m,
+        //        Up10Weight = 0.1m,
+        //        TakeProfitWeight = 0.8m,
+        //        StopLossWeight = 0.1m,
+        //        TotalScoreWeight = 0.5m,
+
+        //        MaxMomentum25 = -10,
+        //        MinExpectedTakeProfit = 25,
+        //        MinExpectedValue = 9,
+        //        MaxHoldingBusinessDays = 15,
+
+        //        AllowedRegimes = new List<string> { "StrongRiskOff" }
+        //    }
+        //};
 
         var resultsByScenario = scenarios.ToDictionary(
             x => x.Name,
@@ -295,6 +862,9 @@ public class BacktestService
         var openPositionsByScenario = scenarios.ToDictionary(
             x => x.Name,
             _ => new List<OpenBacktestPosition>());
+
+        Console.WriteLine();
+        Console.WriteLine("=== 感度分析サマリー ===");
 
         foreach (var tradeDate in tradeDates)
         {
@@ -348,12 +918,29 @@ public class BacktestService
             }
         }
 
+        // 感度分析結果をCSV出力するために、各シナリオの集計結果を保持する
+        var sensitivityResults = new List<SensitivityResult>();
+
         foreach (var scenario in scenarios)
         {
-            PrintSummary(
+            // シナリオごとの取引結果を取得する
+            var results = resultsByScenario[scenario.Name];
+
+            // CSV出力用に集計結果を作成する
+            var sensitivityResult = _backtestAnalyzer.AnalyzeSensitivity(
                 scenario,
-                resultsByScenario[scenario.Name]);
+                results);
+
+            // 後でまとめてCSV出力するため、リストに追加する
+            sensitivityResults.Add(sensitivityResult);
+
+            // コンソールにも短いサマリーを表示する
+            _backtestReporter.PrintCompactSummary(sensitivityResult);
         }
+
+        // すべてのシナリオ出力後に、感度分析結果をCSV保存する
+        _backtestReporter.ExportSensitivityResultsToCsv(sensitivityResults);
+        _backtestReporter.PrintSensitivityHeader();
     }
 
     private async Task<Dictionary<string, List<BacktestTradeResult>>> RunSingleDateAsync(
@@ -371,6 +958,8 @@ public class BacktestService
             .Where(x => x.ScoreDate <= entryDate)
             .OrderByDescending(x => x.ScoreDate)
             .FirstOrDefaultAsync();
+
+        var currentRegime = latestMarket?.MarketRegime ?? "";
 
         var sourceRows = await _db.StockScoresDaily
             .Where(x => x.ScoreDate == entryDate)
@@ -392,6 +981,12 @@ public class BacktestService
 
         var rankingRows = new List<BacktestCandidate>();
 
+        var nullUp5Count = 0;
+        var nullUp10Count = 0;
+        var nullTakeProfitCount = 0;
+        var nullStopLossCount = 0;
+        var nullMomentum25Count = 0;
+
         foreach (var row in sourceRows)
         {
             var bonus = GetMarketRegimeBonus(
@@ -404,6 +999,26 @@ public class BacktestService
             var up10Probability = await up10Service.PredictAsync(row.Score);
             var expectedTakeProfit = await takeProfitService.PredictAsync(row.Score);
             var expectedStopLoss = await stopLossService.PredictAsync(row.Score);
+
+            if (up5Probability == null)
+            {
+                nullUp5Count++;
+            }
+
+            if (up10Probability == null)
+            {
+                nullUp10Count++;
+            }
+
+            if (expectedTakeProfit == null)
+            {
+                nullTakeProfitCount++;
+            }
+
+            if (expectedStopLoss == null)
+            {
+                nullStopLossCount++;
+            }
 
             if (up5Probability == null ||
                 up10Probability == null ||
@@ -419,6 +1034,16 @@ public class BacktestService
 
             if (momentum25 == null)
             {
+                nullMomentum25Count++;
+                continue;
+            }
+
+            var momentum5 = await CalculateMomentum5Async(
+                row.Score.Code,
+                row.Score.ScoreDate);
+
+            if (momentum5 == null)
+            {
                 continue;
             }
 
@@ -427,11 +1052,24 @@ public class BacktestService
                 Score = row.Score,
                 Company = row.Company,
                 TotalScore = totalScore,
+
                 Up5Probability = up5Probability.Value,
                 Up10Probability = up10Probability.Value,
                 ExpectedTakeProfit = expectedTakeProfit.Value,
                 ExpectedStopLoss = expectedStopLoss.Value,
-                Momentum25 = momentum25.Value
+
+                Momentum5 = momentum5.Value,
+                Momentum25 = momentum25.Value,
+
+                // ====================================
+                // StockScoresDaily からスコア系特徴量をコピー
+                // 後で勝ち銘柄・負け銘柄の特徴差を分析するため
+                // ====================================
+                FinancialScore = row.Score.FinancialScore,
+                GrowthScore = row.Score.GrowthScore,
+                TechnicalScore = row.Score.TechnicalScore,
+                SwingScore = row.Score.SwingScore,
+                TotalScoreValue = row.Score.TotalScore,
             });
         }
 
@@ -441,7 +1079,27 @@ public class BacktestService
 
         foreach (var scenario in scenarios)
         {
+            if (scenario.AllowedRegimes != null &&
+                !scenario.AllowedRegimes.Contains(currentRegime))
+            {
+                continue;
+            }
+            if (scenario.EntryDateFrom != null &&
+                entryDate < scenario.EntryDateFrom.Value)
+            {
+                continue;
+            }
+
+            if (scenario.EntryDateTo != null &&
+                entryDate > scenario.EntryDateTo.Value)
+            {
+                continue;
+            }
+
             var candidates = rankingRows
+        .Where(x =>
+            scenario.AllowedRegimes == null ||
+            scenario.AllowedRegimes.Contains(currentRegime))
         .Where(x =>
             // ExpectedTakeProfit の下限フィルタ。
             // TP10以上など、予測利確幅が小さすぎる銘柄を除外したい場合に使う。
@@ -462,6 +1120,18 @@ public class BacktestService
             // これがないと MinMomentum25 を設定しても結果が変わらない。
             scenario.MinMomentum25 == null ||
             x.Momentum25 >= scenario.MinMomentum25.Value)
+        .Where(x =>
+            // Momentum5 の下限フィルタ。
+            // 直近5営業日の上昇率が一定以上の銘柄だけを残す場合に使用する。
+            scenario.MinMomentum5 == null ||
+            x.Momentum5 >= scenario.MinMomentum5.Value)
+        
+        .Where(x =>
+            // Momentum5 の上限フィルタ。
+            // 急落リバウンド戦略では、M5 <= -20 のように
+            // 直近5営業日で大きく下げた銘柄だけを残すために使用する。
+            scenario.MaxMomentum5 == null ||
+            x.Momentum5 <= scenario.MaxMomentum5.Value)
 
         .Where(x =>
             // Momentum25 の上限フィルタ。
@@ -534,9 +1204,21 @@ public class BacktestService
 
             return x;
         })
-                .OrderByDescending(x => x.AiRankingScore)
-                .Take(Math.Min(topCount, executionSettings.MaxEntriesPerDay))
-                .ToList();
+
+            .Where(x =>
+                // ExpectedValue の下限フィルタ。
+                // EVが低い銘柄を除外し、予測上の期待値が高い銘柄だけを残す。
+                scenario.MinExpectedValue == null ||
+                x.ExpectedValue >= scenario.MinExpectedValue.Value)
+            
+            .Where(x =>
+                // ExpectedValue の上限フィルタ。
+                // EVが高すぎる異常値や、過剰予測銘柄を除外したい場合に使用する。
+                scenario.MaxExpectedValue == null ||
+                x.ExpectedValue <= scenario.MaxExpectedValue.Value)
+            .OrderByDescending(x => x.AiRankingScore)
+            .Take(Math.Min(topCount, executionSettings.MaxEntriesPerDay))
+            .ToList();
 
             foreach (var candidate in candidates)
             {
@@ -579,16 +1261,24 @@ public class BacktestService
                     candidate.Score.Code,
                     actualEntryDate);
 
-                if (futurePrices.Count < 10)
+                var maxHoldingDays =
+                    scenario.MaxHoldingBusinessDays
+                    ?? 10;
+
+                if (futurePrices.Count == 0)
                 {
                     continue;
                 }
 
-                var exitDate = futurePrices[^1].TradeDate;
-                var exitPrice = futurePrices[^1].ClosePrice ?? entryPrice;
+                var holdingPrices = futurePrices
+                    .Take(maxHoldingDays)
+                    .ToList();
+
+                var exitDate = holdingPrices[^1].TradeDate;
+                var exitPrice = holdingPrices[^1].ClosePrice ?? entryPrice;
                 var exitReason = "TimeExit";
 
-                foreach (var price in futurePrices)
+                foreach (var price in holdingPrices)
                 {
                     if (price.LowPrice != null &&
                         price.LowPrice <= stopLossPrice)
@@ -650,18 +1340,85 @@ public class BacktestService
                     Shares = shares,
                     GrossProfitAmount = profitAmount.GrossProfit,
                     NetProfitAmount = profitAmount.NetProfit,
+
                     Up5Probability = candidate.Up5Probability,
                     Up10Probability = candidate.Up10Probability,
                     ExpectedTakeProfit = expectedTakeProfit,
                     ExpectedStopLoss = expectedStopLoss,
                     ExpectedValue = candidate.ExpectedValue,
                     AiRankingScore = candidate.AiRankingScore,
+
+                    Momentum5 = candidate.Momentum5,
                     Momentum25 = candidate.Momentum25,
+
+                    // ====================================
+                    // ここから特徴量分析用
+                    // AIが選んだ銘柄・捨てた銘柄の差分を見るため、
+                    // バックテスト結果にもスコア系特徴量を保存する
+                    // ====================================
+                    FinancialScore = candidate.FinancialScore,
+                    GrowthScore = candidate.GrowthScore,
+                    TechnicalScore = candidate.TechnicalScore,
+                    SwingScore = candidate.SwingScore,
+                    TotalScore = candidate.TotalScore,
+
+                    DeviationFromMa25 = candidate.DeviationFromMa25,
+                    ClosePositionInRange25 = candidate.ClosePositionInRange25,
+                    VolumeRatio5 = candidate.VolumeRatio5,
                 });
             }
         }
+        //if (entryDate.Year == 2024 && sourceRows.Count > 0)
+        //{
+        //    Console.WriteLine(
+        //        $"Date:{entryDate:yyyy-MM-dd} " +
+        //        $"Source:{sourceRows.Count} " +
+        //        $"Ranking:{rankingRows.Count} " +
+        //        $"NullUp5:{nullUp5Count} " +
+        //        $"NullUp10:{nullUp10Count} " +
+        //        $"NullTP:{nullTakeProfitCount} " +
+        //        $"NullSL:{nullStopLossCount} " +
+        //        $"NullM25:{nullMomentum25Count}");
+        //}
 
         return resultsByScenario;
+    }
+
+    // ====================================
+    // Momentum5を計算する
+    // 5営業日前の終値から現在の終値までの騰落率を求める
+    // 直近急落・短期リバウンド候補の判定に使う
+    // ====================================
+    private async Task<decimal?> CalculateMomentum5Async(
+        string code,
+        DateTime tradeDate)
+    {
+        var prices = await GetPriceHistoryWithCacheAsync(code);
+
+        var targetPrices = prices
+            .Where(x => x.TradeDate <= tradeDate)
+            .Where(x => x.ClosePrice != null)
+            .TakeLast(6)
+            .ToList();
+
+        if (targetPrices.Count < 6)
+        {
+            return null;
+        }
+
+        var latest = targetPrices[^1].ClosePrice;
+        var close5Ago = targetPrices[0].ClosePrice;
+
+        if (latest == null ||
+            close5Ago == null ||
+            close5Ago <= 0)
+        {
+            return null;
+        }
+
+        return Math.Round(
+            (latest.Value - close5Ago.Value) / close5Ago.Value * 100m,
+            4);
     }
 
     private async Task<decimal?> CalculateMomentum25Async(
@@ -934,6 +1691,18 @@ public class BacktestService
         }
 
         Console.WriteLine();
+        Console.WriteLine("=== Regime別 EV統計 ===");
+
+        foreach (var group in results.GroupBy(x => x.MarketRegime))
+        {
+            Console.WriteLine(
+                $"{group.Key,-15} " +
+                $"AvgEV:{group.Average(x => x.ExpectedValue),8:F2} " +
+                $"AvgTP:{group.Average(x => x.ExpectedTakeProfit),8:F2} " +
+                $"AvgSL:{group.Average(x => x.ExpectedStopLoss),8:F2}");
+        }
+
+        Console.WriteLine();
         Console.WriteLine("=== ExpectedTP帯別成績 ===");
 
         var tpBuckets = new[]
@@ -1169,6 +1938,126 @@ public class BacktestService
 
         Console.WriteLine(
             $"MinEV : {results.Min(x => x.ExpectedValue):F4}");
+
+        Console.WriteLine();
+        Console.WriteLine("=== 全トレード明細 ===");
+
+        foreach (var trade in results
+            .OrderByDescending(x => x.ReturnRate))
+        {
+            Console.WriteLine(
+                $"{trade.EntryDate:yyyy-MM-dd} " +
+                $"{trade.Code} " +
+                $"{trade.CompanyName} " +
+                $"Ret:{trade.ReturnRate:F2}% " +
+                $"M5:{trade.Momentum5:F2} " +
+                $"M25:{trade.Momentum25:F2} " +
+                $"TP:{trade.ExpectedTakeProfit:F2} " +
+                $"EV:{trade.ExpectedValue:F2}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("=== TP25 M25<-10 Trades ===");
+
+        foreach (var trade in results
+            .OrderBy(x => x.EntryDate))
+        {
+            Console.WriteLine(
+                $"{trade.EntryDate:yyyy-MM-dd} " +
+                $"{trade.Code} " +
+                $"{trade.CompanyName} " +
+                $"Ret:{trade.ReturnRate:F2}% " +
+                $"M25:{trade.Momentum25:F2} " +
+                $"TP:{trade.ExpectedTakeProfit:F2} " +
+                $"EV:{trade.ExpectedValue:F2}");
+        }
+
+        if (ShowMomentum25Analysis)
+        {
+            PrintMomentum25Summary(results);
+        }
+
+        if (ShowMomentum5Analysis)
+        {
+            PrintMomentum5Summary(results);
+        }
+
+        if (ShowRegimeAnalysis)
+        {
+            PrintRegimeMomentum25Summary(results);
+            PrintRegimeMomentum5Summary(results);
+        }
+
+        if (ShowExpectedTpAnalysis)
+        {
+            PrintExpectedTakeProfitSummary(results);
+        }
+
+        PrintYearlySummary(results);
+        PrintMonthlySummary(results);
+    }
+
+    // ====================================
+    // 年別成績を表示する
+    // 戦略が特定年度だけ強いのかを確認する
+    // ====================================
+    private void PrintYearlyPerformance(
+        List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Yearly Performance ===");
+
+        var groups = trades
+            .GroupBy(x => x.EntryDate.Year)
+            .OrderBy(x => x.Key);
+
+        foreach (var group in groups)
+        {
+            var yearTrades = group.ToList();
+
+            var winCount =
+                yearTrades.Count(x => x.ReturnRate > 0);
+
+            var winRate =
+                (decimal)winCount /
+                yearTrades.Count * 100m;
+
+            var grossProfit =
+                yearTrades
+                    .Where(x => x.ReturnRate > 0)
+                    .Sum(x => x.NetProfitAmount);
+
+            var grossLoss =
+                Math.Abs(
+                    yearTrades
+                        .Where(x => x.ReturnRate <= 0)
+                        .Sum(x => x.NetProfitAmount));
+
+            var pf =
+                grossLoss == 0
+                    ? 0
+                    : grossProfit / grossLoss;
+
+            var netProfit =
+                yearTrades.Sum(x => x.NetProfitAmount);
+
+            Console.WriteLine();
+
+            Console.WriteLine(
+                $"{group.Key}");
+
+            Console.WriteLine(
+                $"Trades : {yearTrades.Count}");
+
+            Console.WriteLine(
+                $"WinRate : {winRate:F2}%");
+
+            Console.WriteLine(
+                $"NetProfit : {netProfit:N0}");
+
+            Console.WriteLine(
+                $"PF : {pf:F2}");
+        }
     }
 
     private async Task<PriceDaily?> GetNextBusinessDayEntryPriceWithCacheAsync(
@@ -1256,6 +2145,223 @@ public class BacktestService
         return (int)lotCount * lotSize;
     }
 
+    private void PrintMomentum25Summary(List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Momentum25別成績 ===");
+
+        var groups = trades
+            .GroupBy(x =>
+            {
+                if (x.Momentum25 <= -30) return "M25 <= -30";
+                if (x.Momentum25 <= -20) return "-30 < M25 <= -20";
+                if (x.Momentum25 <= -10) return "-20 < M25 <= -10";
+                if (x.Momentum25 <= 0) return "-10 < M25 <= 0";
+                return "0 < M25";
+            })
+            .OrderBy(x => x.Key);
+
+        foreach (var group in groups)
+        {
+            PrintTradeGroupSummary(group.Key, group.ToList());
+        }
+    }
+
+    private void PrintExpectedTakeProfitSummary(List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== ExpectedTP別成績 ===");
+
+        var groups = trades
+            .GroupBy(x =>
+            {
+                if (x.ExpectedTakeProfit >= 30) return "ExpectedTP >= 30%";
+                if (x.ExpectedTakeProfit >= 20) return "20% <= ExpectedTP < 30%";
+                if (x.ExpectedTakeProfit >= 10) return "10% <= ExpectedTP < 20%";
+                return "ExpectedTP < 10%";
+            })
+            .OrderBy(x => x.Key);
+
+        foreach (var group in groups)
+        {
+            PrintTradeGroupSummary(group.Key, group.ToList());
+        }
+    }
+
+    private void PrintMomentum5Summary(List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Momentum5別成績 ===");
+
+        var groups = trades
+            .GroupBy(x =>
+            {
+                if (x.Momentum5 <= -20) return "M5 <= -20";
+                if (x.Momentum5 <= -10) return "-20 < M5 <= -10";
+                if (x.Momentum5 <= 0) return "-10 < M5 <= 0";
+                if (x.Momentum5 <= 10) return "0 < M5 <= 10";
+
+                return "10 < M5";
+            });
+
+        foreach (var group in groups)
+        {
+            PrintTradeGroupSummary(group.Key, group.ToList());
+        }
+    }
+
+    private void PrintRegimeMomentum5Summary(List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Regime × Momentum5別成績 ===");
+
+        var groups = trades
+            .GroupBy(x =>
+            {
+                var band =
+                    x.Momentum5 <= -20 ? "M5 <= -20" :
+                    x.Momentum5 <= -10 ? "-20 < M5 <= -10" :
+                    x.Momentum5 <= 0 ? "-10 < M5 <= 0" :
+                    x.Momentum5 <= 10 ? "0 < M5 <= 10" :
+                    "10 < M5";
+
+                return $"{x.MarketRegime} / {band}";
+            });
+
+        foreach (var group in groups)
+        {
+            PrintTradeGroupSummary(group.Key, group.ToList());
+        }
+    }
+
+    private void PrintTradeGroupSummary(string groupName, List<BacktestTradeResult> trades)
+    {
+        if (trades.Count == 0)
+        {
+            return;
+        }
+
+        var winTrades = trades.Where(x => x.ReturnRate > 0).ToList();
+        var loseTrades = trades.Where(x => x.ReturnRate <= 0).ToList();
+
+        var tradeCount = trades.Count;
+        var winCount = winTrades.Count;
+
+        var winRate = (double)winCount / tradeCount * 100.0;
+        var avgReturn = trades.Average(x => x.ReturnRate);
+
+        var grossProfit = winTrades.Sum(x => x.ReturnRate);
+        var grossLoss = Math.Abs(loseTrades.Sum(x => x.ReturnRate));
+        var profitFactor = grossLoss == 0 ? 999 : grossProfit / grossLoss;
+
+        var totalReturn = trades.Sum(x => x.ReturnRate);
+
+        Console.WriteLine();
+        Console.WriteLine($"[{groupName}]");
+        Console.WriteLine($"TradeCount : {tradeCount}");
+        Console.WriteLine($"WinRate    : {winRate:F2}%");
+        Console.WriteLine($"AvgReturn  : {avgReturn:F2}%");
+        Console.WriteLine($"TotalReturn: {totalReturn:F2}%");
+        Console.WriteLine($"PF         : {profitFactor:F2}");
+    }
+
+    /// <summary>
+    /// 年別成績を表示する
+    /// </summary>
+    private void PrintYearlySummary(
+        List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== 年別成績 ===");
+
+        var groups = trades
+            .GroupBy(x => x.EntryDate.Year)
+            .OrderBy(x => x.Key);
+
+        foreach (var group in groups)
+        {
+            var winTrades = group.Where(x => x.ReturnRate > 0).ToList();
+            var loseTrades = group.Where(x => x.ReturnRate <= 0).ToList();
+
+            var grossProfit = winTrades.Sum(x => x.ReturnRate);
+            var grossLoss = Math.Abs(loseTrades.Sum(x => x.ReturnRate));
+
+            var profitFactor =
+                grossLoss == 0
+                    ? 999
+                    : grossProfit / grossLoss;
+
+            Console.WriteLine(
+                $"{group.Key} " +
+                $"Trades:{group.Count(),3} " +
+                $"WinRate:{group.Count(x => x.ReturnRate > 0) * 100.0 / group.Count():F2}% " +
+                $"TotalReturn:{group.Sum(x => x.ReturnRate):F2}% " +
+                $"PF:{profitFactor:F2}");
+        }
+    }
+
+    /// <summary>
+    /// 月別成績を表示する
+    /// </summary>
+    private void PrintMonthlySummary(
+        List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== 月別成績 ===");
+
+        var groups = trades
+            .GroupBy(x => $"{x.EntryDate.Year}-{x.EntryDate.Month:00}")
+            .OrderBy(x => x.Key);
+
+        foreach (var group in groups)
+        {
+            var winTrades = group.Where(x => x.ReturnRate > 0).ToList();
+            var loseTrades = group.Where(x => x.ReturnRate <= 0).ToList();
+
+            var grossProfit = winTrades.Sum(x => x.ReturnRate);
+            var grossLoss = Math.Abs(loseTrades.Sum(x => x.ReturnRate));
+
+            var profitFactor =
+                grossLoss == 0
+                    ? 999
+                    : grossProfit / grossLoss;
+
+            Console.WriteLine(
+                $"{group.Key} " +
+                $"Trades:{group.Count(),3} " +
+                $"WinRate:{group.Count(x => x.ReturnRate > 0) * 100.0 / group.Count():F2}% " +
+                $"TotalReturn:{group.Sum(x => x.ReturnRate):F2}% " +
+                $"PF:{profitFactor:F2}");
+        }
+    }
+
+    private void PrintRegimeMomentum25Summary(List<BacktestTradeResult> trades)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Regime × Momentum25別成績 ===");
+
+        var groups = trades
+            .GroupBy(x =>
+            {
+                var m25Band =
+                    x.Momentum25 <= -30 ? "M25 <= -30" :
+                    x.Momentum25 <= -20 ? "-30 < M25 <= -20" :
+                    x.Momentum25 <= -10 ? "-20 < M25 <= -10" :
+                    x.Momentum25 <= 0 ? "-10 < M25 <= 0" :
+                    "0 < M25";
+
+                return $"{x.MarketRegime} / {m25Band}";
+            })
+            .OrderBy(x => x.Key);
+
+        foreach (var group in groups)
+        {
+            PrintTradeGroupSummary(group.Key, group.ToList());
+        }
+    }
+
+
+
     private static (decimal GrossProfit, decimal NetProfit) CalculateProfitAmount(
     decimal entryPrice,
     decimal exitPrice,
@@ -1314,52 +2420,17 @@ public class BacktestService
         public decimal ExpectedValue { get; set; }
 
         public decimal Momentum25 { get; set; }
-    }
 
-    private class BacktestScenario
-    {
-        public string Name { get; set; } = "";
+        public decimal Momentum5 { get; set; }
 
-        public decimal Up5Weight { get; set; }
+        public decimal FinancialScore { get; set; }
+        public decimal GrowthScore { get; set; }
+        public decimal TechnicalScore { get; set; }
+        public decimal SwingScore { get; set; }
+        public decimal TotalScoreValue { get; set; }
 
-        public decimal Up10Weight { get; set; }
-
-        public decimal TakeProfitWeight { get; set; }
-
-        public decimal StopLossWeight { get; set; }
-
-        public decimal TotalScoreWeight { get; set; }
-
-        public decimal? MinExpectedTakeProfit { get; set; }
-        public decimal? MaxExpectedTakeProfit { get; set; }
-
-        public decimal? MaxMomentum25 { get; set; }
-        public decimal? MinMomentum25 { get; set; }
-
-        // Momentum25の特定レンジを除外するための下限。
-        // 例：-10 <= Momentum25 < 0 を除外したい場合、
-        // ExcludeMomentum25Min = -10m を設定する。
-        public decimal? ExcludeMomentum25Min { get; set; }
-
-        // Momentum25の特定レンジを除外するための上限。
-        // 例：-10 <= Momentum25 < 0 を除外したい場合、
-        // ExcludeMomentum25Max = 0m を設定する。
-        public decimal? ExcludeMomentum25Max { get; set; }
-
-        // ExpectedTakeProfitの特定レンジを除外するための下限。
-        // 例：20 <= ExpectedTP < 25 を除外したい場合、
-        // ExcludeExpectedTakeProfitMin = 20m を設定する。
-        public decimal? ExcludeExpectedTakeProfitMin { get; set; }
-
-        // ExpectedTakeProfitの特定レンジを除外するための上限。
-        // 例：20 <= ExpectedTP < 25 を除外したい場合、
-        // ExcludeExpectedTakeProfitMax = 25m を設定する。
-        public decimal? ExcludeExpectedTakeProfitMax { get; set; }
-
-        public decimal? ExcludeCrossExpectedTakeProfitMin { get; set; }
-        public decimal? ExcludeCrossExpectedTakeProfitMax { get; set; }
-
-        public decimal? ExcludeCrossMomentum25Min { get; set; }
-        public decimal? ExcludeCrossMomentum25Max { get; set; }
+        public decimal DeviationFromMa25 { get; set; }
+        public decimal ClosePositionInRange25 { get; set; }
+        public decimal VolumeRatio5 { get; set; }
     }
 }
