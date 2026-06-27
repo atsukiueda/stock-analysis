@@ -142,34 +142,37 @@ public class MlTrainingDataService
 
             if (existing == null)
             {
-                _db.MlTrainingData.Add(new MlTrainingData
+                existing = new MlTrainingData
                 {
                     Code = score.Code,
                     TradeDate = score.ScoreDate,
-
-                    FinancialScore = score.FinancialScore,
-                    GrowthScore = score.GrowthScore,
-                    DividendScore = score.DividendScore,
-                    RoeScore = score.RoeScore,
-                    PerScore = score.PerScore,
-                    PbrScore = score.PbrScore,
-                    TechnicalScore = score.TechnicalScore,
-                    SwingScore = score.SwingScore,
-                    MarketScore = score.MarketScore,
-
-                    FutureReturn5 = futureReturn5,
-                    FutureReturn10 = futureReturn10,
-                    FutureReturn20 = futureReturn20,
-
-                    Up5 = futureReturn5 >= 3m,
-                    Up10 = futureReturn10 >= 5m,
-                    Up20 = futureReturn20 >= 8m,
-                    FutureMaxReturn10 = futureMaxReturn10,
-                    FutureMinReturn10 = futureMinReturn10,
-
                     CreatedAt = DateTime.Now
-                });
+                };
+
+                _db.MlTrainingData.Add(existing);
             }
+
+            // 既存・新規どちらでも、最新のスコアと将来リターンを反映する。
+            existing.FinancialScore = score.FinancialScore;
+            existing.GrowthScore = score.GrowthScore;
+            existing.DividendScore = score.DividendScore;
+            existing.RoeScore = score.RoeScore;
+            existing.PerScore = score.PerScore;
+            existing.PbrScore = score.PbrScore;
+            existing.TechnicalScore = score.TechnicalScore;
+            existing.SwingScore = score.SwingScore;
+            existing.MarketScore = score.MarketScore;
+
+            existing.FutureReturn5 = futureReturn5;
+            existing.FutureReturn10 = futureReturn10;
+            existing.FutureReturn20 = futureReturn20;
+
+            existing.Up5 = futureReturn5 >= 3m;
+            existing.Up10 = futureReturn10 >= 5m;
+            existing.Up20 = futureReturn20 >= 8m;
+
+            existing.FutureMaxReturn10 = futureMaxReturn10;
+            existing.FutureMinReturn10 = futureMinReturn10;
         }
 
         await _db.SaveChangesAsync();

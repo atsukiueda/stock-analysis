@@ -77,6 +77,8 @@ public class BacktestService
         var up10Service = new MlUp10PredictionService(_db);
         var takeProfitService = new MlTakeProfitPredictionService(_db);
         var stopLossService = new MlStopLossPredictionService(_db);
+        var filterAnalysisRows = new List<FilterAnalysisRow>();
+        var filterRecorder = new FilterAnalysisRecorder();
 
         var scenarios = _scenarioFactory.CreateReboundWalkForwardBaseScenarios();
 
@@ -111,7 +113,8 @@ public class BacktestService
                 up10Service,
                 takeProfitService,
                 stopLossService,
-                up5ModelName);
+                up5ModelName,
+                filterRecorder);
 
             foreach (var scenario in scenarios)
             {
@@ -176,6 +179,8 @@ public class BacktestService
 
         // すべてのシナリオ出力後に、感度分析結果をCSV保存する
         _backtestReporter.ExportSensitivityResultsToCsv(sensitivityResults);
+        _backtestReporter.ExportFilterAnalysisToCsv(
+            filterRecorder.GetRows());
         _backtestReporter.PrintSensitivityHeader();
     }
 
@@ -187,7 +192,8 @@ public class BacktestService
         MlUp10PredictionService up10Service,
         MlTakeProfitPredictionService takeProfitService,
         MlStopLossPredictionService stopLossService,
-        string? up5ModelName)
+        string? up5ModelName,
+        FilterAnalysisRecorder filterRecorder)
     {
         var executionSettings = new BacktestExecutionSettings();
 
@@ -346,129 +352,190 @@ public class BacktestService
                 continue;
             }
 
-            var candidates = rankingRows
-        .Where(x =>
-            scenario.AllowedRegimes == null ||
-            scenario.AllowedRegimes.Contains(currentRegime))
-        .Where(x =>
-            // ExpectedTakeProfit の下限フィルタ。
-            // TP10以上など、予測利確幅が小さすぎる銘柄を除外したい場合に使う。
-            scenario.MinExpectedTakeProfit == null ||
-            x.ExpectedTakeProfit >= scenario.MinExpectedTakeProfit.Value)
+            // ====================================
+            // フィルタ通過件数を段階的に集計する。
+            // どの条件で候補が消えているかを分析するため、Whereを一括チェーンせず段階ごとに分ける。
+            // ====================================
 
-        .Where(x =>
-            // ExpectedTakeProfit の上限フィルタ。
-            // TPが高すぎる銘柄は過熱銘柄を拾う可能性があるため、
-            // TP15未満・TP20未満などの検証に使う。
-            scenario.MaxExpectedTakeProfit == null ||
-            x.ExpectedTakeProfit < scenario.MaxExpectedTakeProfit.Value)
-
-        .Where(x =>
-            // Momentum25 の下限フィルタ。
-            // 今回追加した TpExtreme_M25_0_10 では、
-            // Momentum25 が 0% 未満の銘柄を除外する。
-            // これがないと MinMomentum25 を設定しても結果が変わらない。
-            scenario.MinMomentum25 == null ||
-            x.Momentum25 >= scenario.MinMomentum25.Value)
-        .Where(x =>
-            // Momentum5 の下限フィルタ。
-            // 直近5営業日の上昇率が一定以上の銘柄だけを残す場合に使用する。
-            scenario.MinMomentum5 == null ||
-            x.Momentum5 >= scenario.MinMomentum5.Value)
-        
-        .Where(x =>
-            // Momentum5 の上限フィルタ。
-            // 急落リバウンド戦略では、M5 <= -20 のように
-            // 直近5営業日で大きく下げた銘柄だけを残すために使用する。
-            scenario.MaxMomentum5 == null ||
-            x.Momentum5 <= scenario.MaxMomentum5.Value)
-
-        .Where(x =>
-            // Momentum25 の上限フィルタ。
-            // Momentum25 が高すぎる銘柄は過熱・反落リスクが高いため、
-            // M25_10 などの検証で使用する。
-            scenario.MaxMomentum25 == null ||
-            x.Momentum25 <= scenario.MaxMomentum25.Value)
-
-        .Where(x =>
-            // Momentum25 の除外レンジフィルタ。
-            // 例：ExcludeMomentum25Min = -10, ExcludeMomentum25Max = 0 の場合、
-            // -10 <= Momentum25 < 0 の銘柄を候補から除外する。
-            //
-            // TpExtreme_M25_ExcludeMinus10To0 では、
-            // M25 < -10 は強かったため残し、
-            // -10〜0 の弱い帯だけを除外する目的で使う。
-            scenario.ExcludeMomentum25Min == null ||
-            scenario.ExcludeMomentum25Max == null ||
-            x.Momentum25 < scenario.ExcludeMomentum25Min.Value ||
-            x.Momentum25 >= scenario.ExcludeMomentum25Max.Value)
-        .Where(x =>
-            // ExpectedTakeProfit の除外レンジフィルタ。
-            // 例：ExcludeExpectedTakeProfitMin = 20, ExcludeExpectedTakeProfitMax = 25 の場合、
-            // 20 <= ExpectedTP < 25 の銘柄を候補から除外する。
-            //
-            // 現在の最良シナリオでも TP20-25 帯は
-            // Trades:4 / WinRate:0% / NetProfit:-34,523 / PF:0.00
-            // と明確に足を引っ張っているため、ここだけを狙って除外する。
-            scenario.ExcludeExpectedTakeProfitMin == null ||
-            scenario.ExcludeExpectedTakeProfitMax == null ||
-            x.ExpectedTakeProfit < scenario.ExcludeExpectedTakeProfitMin.Value ||
-            x.ExpectedTakeProfit >= scenario.ExcludeExpectedTakeProfitMax.Value)
-        .Where(x =>
-            // ExpectedTP と Momentum25 のクロス条件除外。
-            // 例：TP < 10 かつ 5 <= M25 < 10 のような、
-            // 単独条件ではなく組み合わせで悪い帯だけを除外する。
-            scenario.ExcludeCrossExpectedTakeProfitMin == null ||
-            scenario.ExcludeCrossExpectedTakeProfitMax == null ||
-            scenario.ExcludeCrossMomentum25Min == null ||
-            scenario.ExcludeCrossMomentum25Max == null ||
-            !(
-                x.ExpectedTakeProfit >= scenario.ExcludeCrossExpectedTakeProfitMin.Value &&
-                x.ExpectedTakeProfit < scenario.ExcludeCrossExpectedTakeProfitMax.Value &&
-                x.Momentum25 >= scenario.ExcludeCrossMomentum25Min.Value &&
-                x.Momentum25 < scenario.ExcludeCrossMomentum25Max.Value
-            ))
-        .Select(x =>
-        {
-            var up10Rate = x.Up10Probability / 100m;
-
-            var expectedValue =
-                (up10Rate * x.ExpectedTakeProfit)
-                - ((1m - up10Rate) * Math.Abs(x.ExpectedStopLoss));
-
-            x.ExpectedValue = expectedValue;
-
-            if (scenario.Name.StartsWith("ExpectedValue"))
+            var diagnostic = new ScenarioFilterDiagnostics
             {
-                x.AiRankingScore = expectedValue;
-            }
-            else
+                ScenarioName = scenario.Name,
+                EntryDate = entryDate,
+                RankingCount = rankingRows.Count
+            };
+
+            var filteredCandidates = rankingRows.AsEnumerable();
+
+            if (scenario.AllowedRegimes != null)
             {
-                // ExpectedValue単体は怪しいが、ランキング式に混ぜた状態では
-                // TpExtreme_M25_10 が最良だったため、現時点ではこちらを基準にする。
-                x.AiRankingScore =
-                    expectedValue
-                    + (x.Up5Probability * 0.05m)
-                    + (x.TotalScore * scenario.TotalScoreWeight);
+                filteredCandidates = filteredCandidates
+                    .Where(_ => scenario.AllowedRegimes.Contains(currentRegime));
             }
 
-            return x;
-        })
+            var regimePassed = filteredCandidates.ToList();
 
-            .Where(x =>
-                // ExpectedValue の下限フィルタ。
-                // EVが低い銘柄を除外し、予測上の期待値が高い銘柄だけを残す。
-                scenario.MinExpectedValue == null ||
-                x.ExpectedValue >= scenario.MinExpectedValue.Value)
-            
-            .Where(x =>
-                // ExpectedValue の上限フィルタ。
-                // EVが高すぎる異常値や、過剰予測銘柄を除外したい場合に使用する。
-                scenario.MaxExpectedValue == null ||
-                x.ExpectedValue <= scenario.MaxExpectedValue.Value)
-            .OrderByDescending(x => x.AiRankingScore)
-            .Take(Math.Min(topCount, executionSettings.MaxEntriesPerDay))
-            .ToList();
+            diagnostic.RegimePassCount = regimePassed.Count;
+
+            filteredCandidates = regimePassed.AsEnumerable();
+
+            if (scenario.MinExpectedTakeProfit != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.ExpectedTakeProfit >= scenario.MinExpectedTakeProfit.Value);
+            }
+
+            if (scenario.MaxExpectedTakeProfit != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.ExpectedTakeProfit < scenario.MaxExpectedTakeProfit.Value);
+            }
+
+            if (scenario.ExcludeExpectedTakeProfitMin != null &&
+                scenario.ExcludeExpectedTakeProfitMax != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x =>
+                        x.ExpectedTakeProfit < scenario.ExcludeExpectedTakeProfitMin.Value ||
+                        x.ExpectedTakeProfit >= scenario.ExcludeExpectedTakeProfitMax.Value);
+            }
+
+            var expectedTpPassed = filteredCandidates.ToList();
+
+            diagnostic.ExpectedTpPassCount = expectedTpPassed.Count;
+
+            filteredCandidates = expectedTpPassed.AsEnumerable();
+
+            if (scenario.MinMomentum25 != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.Momentum25 >= scenario.MinMomentum25.Value);
+            }
+
+            if (scenario.MaxMomentum25 != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.Momentum25 <= scenario.MaxMomentum25.Value);
+            }
+
+            if (scenario.ExcludeMomentum25Min != null &&
+                scenario.ExcludeMomentum25Max != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x =>
+                        x.Momentum25 < scenario.ExcludeMomentum25Min.Value ||
+                        x.Momentum25 >= scenario.ExcludeMomentum25Max.Value);
+            }
+
+            var momentum25Passed = filteredCandidates.ToList();
+
+            diagnostic.Momentum25PassCount = momentum25Passed.Count;
+
+            filteredCandidates = momentum25Passed.AsEnumerable();
+
+            if (scenario.MinMomentum5 != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.Momentum5 >= scenario.MinMomentum5.Value);
+            }
+
+            if (scenario.MaxMomentum5 != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.Momentum5 <= scenario.MaxMomentum5.Value);
+            }
+
+            var momentum5Passed = filteredCandidates.ToList();
+
+            diagnostic.Momentum5PassCount = momentum5Passed.Count;
+
+            // ====================================
+            // ExpectedValue と AiRankingScore を計算する。
+            // EV条件は計算後でないと適用できないため、この段階で実施する。
+            // ====================================
+
+            foreach (var candidate in momentum5Passed)
+            {
+                var up10Rate = candidate.Up10Probability / 100m;
+
+                var expectedValue =
+                    (up10Rate * candidate.ExpectedTakeProfit)
+                    - ((1m - up10Rate) * Math.Abs(candidate.ExpectedStopLoss));
+
+                candidate.ExpectedValue = expectedValue;
+
+                if (scenario.Name.StartsWith("ExpectedValue"))
+                {
+                    candidate.AiRankingScore = expectedValue;
+                }
+                else
+                {
+                    candidate.AiRankingScore =
+                        expectedValue
+                        + (candidate.Up5Probability * 0.05m)
+                        + (candidate.TotalScore * scenario.TotalScoreWeight);
+                }
+            }
+
+            filteredCandidates = momentum5Passed.AsEnumerable();
+
+            if (scenario.MinExpectedValue != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.ExpectedValue >= scenario.MinExpectedValue.Value);
+            }
+
+            if (scenario.MaxExpectedValue != null)
+            {
+                filteredCandidates = filteredCandidates
+                    .Where(x => x.ExpectedValue <= scenario.MaxExpectedValue.Value);
+            }
+
+            var expectedValuePassed = filteredCandidates.ToList();
+
+            diagnostic.ExpectedValuePassCount = expectedValuePassed.Count;
+
+            var candidates = expectedValuePassed
+                .OrderByDescending(x => x.AiRankingScore)
+                .Take(Math.Min(topCount, executionSettings.MaxEntriesPerDay))
+                .ToList();
+
+            foreach (var selected in candidates)
+            {
+                filterRecorder.Record(
+                    entryDate,
+                    scenario.Name,
+                    selected.Score.Code,
+                    selected.Company.CompanyName,
+                    currentRegime,
+                    selected.Up5Probability,
+                    selected.Up10Probability,
+                    selected.ExpectedTakeProfit,
+                    selected.ExpectedStopLoss,
+                    selected.ExpectedValue,
+                    selected.Momentum25,
+                    selected.Momentum5,
+                    selected.AiRankingScore,
+                    "Selected");
+            }
+
+            diagnostic.FinalCandidateCount = candidates.Count;
+
+            // 候補が0件になるシナリオだけ、原因追跡用に出力する。
+            // 出力しすぎるとコンソールが読みにくくなるため、0件時に限定する。
+            if (diagnostic.FinalCandidateCount == 0 &&
+                diagnostic.RankingCount > 0)
+            {
+                Console.WriteLine(
+                    $"FilterDiag {diagnostic.EntryDate:yyyy-MM-dd} " +
+                    $"{diagnostic.ScenarioName} " +
+                    $"Ranking:{diagnostic.RankingCount} " +
+                    $"Regime:{diagnostic.RegimePassCount} " +
+                    $"TP:{diagnostic.ExpectedTpPassCount} " +
+                    $"M25:{diagnostic.Momentum25PassCount} " +
+                    $"M5:{diagnostic.Momentum5PassCount} " +
+                    $"EV:{diagnostic.ExpectedValuePassCount} " +
+                    $"Final:{diagnostic.FinalCandidateCount}");
+            }
 
             foreach (var candidate in candidates)
             {
@@ -1647,6 +1714,31 @@ public class BacktestService
         public string Code { get; set; } = "";
         public DateTime EntryDate { get; set; }
         public DateTime ExitDate { get; set; }
+    }
+
+    /// <summary>
+    /// バックテストシナリオごとのフィルタ通過件数を保持する。
+    /// どの条件で候補が落ちているかを分析するために使用する。
+    /// </summary>
+    private sealed class ScenarioFilterDiagnostics
+    {
+        public string ScenarioName { get; set; } = "";
+
+        public DateTime EntryDate { get; set; }
+
+        public int RankingCount { get; set; }
+
+        public int RegimePassCount { get; set; }
+
+        public int ExpectedTpPassCount { get; set; }
+
+        public int Momentum25PassCount { get; set; }
+
+        public int Momentum5PassCount { get; set; }
+
+        public int ExpectedValuePassCount { get; set; }
+
+        public int FinalCandidateCount { get; set; }
     }
 
     private class BacktestCandidate

@@ -255,18 +255,78 @@ public class ScenarioFactory
     public List<BacktestScenario> CreateReboundWalkForwardBaseScenarios()
     {
         return new List<BacktestScenario>
-    {
-        new BacktestScenario
         {
-            Name = "WF_Debug_NoFilter",
-            Up5Weight = 0.1m,
-            Up10Weight = 0.1m,
-            TakeProfitWeight = 0.8m,
-            StopLossWeight = 0.1m,
-            TotalScoreWeight = 0.5m,
-            MaxHoldingBusinessDays = 10
-        },
-        CreateBaseReboundStrongRiskOffScenario("WF_Strict_Best")
-    };
+            new BacktestScenario
+            {
+                Name = "WF_NoFilter",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+                MaxHoldingBusinessDays = 10
+            },
+
+            CreateBaseReboundStrongRiskOffScenario("WF_Strict_Best"),
+
+            new BacktestScenario
+            {
+                Name = "WF_RiskOff_M25_10_M5_10_TP25_EV9",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+                AllowedRegimes = new List<string>
+                {
+                    "RiskOff",
+                    "StrongRiskOff"
+                },
+                MaxMomentum25 = -10m,
+                MaxMomentum5 = -10m,
+                MinExpectedTakeProfit = 25m,
+                MinExpectedValue = 9m,
+                MaxHoldingBusinessDays = 10
+            },
+
+            new BacktestScenario
+            {
+                Name = "WF_RiskOff_M25_10_M5_15_TP25_EV6",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+                AllowedRegimes = new List<string>
+                {
+                    "RiskOff",
+                    "StrongRiskOff"
+                },
+                MaxMomentum25 = -10m,
+                MaxMomentum5 = -15m,
+                MinExpectedTakeProfit = 25m,
+                MinExpectedValue = 6m,
+                MaxHoldingBusinessDays = 10
+            },
+
+            new BacktestScenario
+            {
+                Name = "WF_StrongRiskOff_M25_10_M5_10_TP25_EV6",
+                Up5Weight = 0.1m,
+                Up10Weight = 0.1m,
+                TakeProfitWeight = 0.8m,
+                StopLossWeight = 0.1m,
+                TotalScoreWeight = 0.5m,
+                AllowedRegimes = new List<string>
+                {
+                    "StrongRiskOff"
+                },
+                MaxMomentum25 = -10m,
+                MaxMomentum5 = -10m,
+                MinExpectedTakeProfit = 25m,
+                MinExpectedValue = 6m,
+                MaxHoldingBusinessDays = 10
+            }
+        };
     }
 }

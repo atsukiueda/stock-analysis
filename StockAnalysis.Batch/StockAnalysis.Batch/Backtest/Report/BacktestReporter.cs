@@ -1,5 +1,7 @@
 ﻿using System.Text;
 using StockAnalysis.Batch.Backtest.Analysis;
+using StockAnalysis.Batch.Backtest.Analysis;
+using System.Text;
 
 namespace StockAnalysis.Batch.Backtest.Report;
 
@@ -94,5 +96,61 @@ public class BacktestReporter
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// フィルタ分析結果をCSV出力する。
+    /// 各候補銘柄がどのフィルタで除外されたかを確認するために使用する。
+    /// </summary>
+    /// <param name="rows">フィルタ分析行。</param>
+    public void ExportFilterAnalysisToCsv(
+        List<FilterAnalysisRow> rows)
+    {
+        if (rows.Count == 0)
+        {
+            Console.WriteLine("フィルタ分析CSV出力対象がありません。");
+            return;
+        }
+
+        var outputDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "BacktestResults");
+
+        Directory.CreateDirectory(outputDirectory);
+
+        var filePath = Path.Combine(
+            outputDirectory,
+            $"filter_analysis_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+        var csv = new StringBuilder();
+
+        csv.AppendLine(
+            "TradeDate,ScenarioName,Code,CompanyName,Regime,Up5Probability,Up10Probability,ExpectedTakeProfit,ExpectedStopLoss,ExpectedValue,Momentum25,Momentum5,AiRankingScore,Result");
+
+        foreach (var row in rows)
+        {
+            csv.AppendLine(
+                $"{row.TradeDate:yyyy-MM-dd}," +
+                $"{EscapeCsv(row.ScenarioName)}," +
+                $"{row.Code}," +
+                $"{EscapeCsv(row.CompanyName)}," +
+                $"{EscapeCsv(row.Regime)}," +
+                $"{row.Up5Probability:F4}," +
+                $"{row.Up10Probability:F4}," +
+                $"{row.ExpectedTakeProfit:F4}," +
+                $"{row.ExpectedStopLoss:F4}," +
+                $"{row.ExpectedValue:F4}," +
+                $"{row.Momentum25:F4}," +
+                $"{row.Momentum5:F4}," +
+                $"{row.AiRankingScore:F4}," +
+                $"{EscapeCsv(row.Result)}");
+        }
+
+        File.WriteAllText(
+            filePath,
+            csv.ToString(),
+            Encoding.UTF8);
+
+        Console.WriteLine($"フィルタ分析CSVを出力しました: {filePath}");
     }
 }

@@ -92,4 +92,17 @@ public class BacktestAnalyzer
             AvgHoldingDays = avgHoldingDays
         };
     }
+
+    /// <summary>
+    /// フィルタ分析行を生成する。
+    /// バックテスト候補がどのフィルタで除外されたかを分析するために使用する。
+    /// </summary>
+    /// <param name="row">分析対象。</param>
+    /// <param name="rows">格納先。</param>
+    public void AddFilterAnalysisRow(
+        FilterAnalysisRow row,
+        List<FilterAnalysisRow> rows)
+    {
+        rows.Add(row);
+    }
 }

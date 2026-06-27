@@ -1105,4 +1105,289 @@ DateTime tradeDate)
                 : (float)((ma75 - previousMa75) / previousMa75 * 100m)
         };
     }
+
+    /// <summary>
+    /// 指定された学習期間のデータを使って、Up5モデルの特徴量重要度を分析する。
+    /// ウォークフォワード期間ごとに、どの特徴量が効いているかを確認するために使用する。
+    /// </summary>
+    /// <param name="period">学習期間・検証期間・モデル名を持つ期間定義。</param>
+    public async Task AnalyzeFeatureImportanceAsync(
+        TrainingPeriod period)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== Up5 Feature Importance 開始 ===");
+        Console.WriteLine($"ModelName : {period.ModelName}");
+        Console.WriteLine($"Train     : {period.TrainFrom:yyyy-MM-dd} - {period.TrainTo:yyyy-MM-dd}");
+
+        var inputs = await CreateTrainingInputsAsync(period);
+
+        if (inputs.Count < 100)
+        {
+            Console.WriteLine($"特徴量重要度分析にはデータが少なすぎます。件数:{inputs.Count}");
+            return;
+        }
+
+        var orderedInputs = inputs
+            .OrderBy(x => x.TradeDate)
+            .ToList();
+
+        var trainCount = (int)(orderedInputs.Count * 0.8);
+
+        var trainInputs = orderedInputs
+            .Take(trainCount)
+            .ToList();
+
+        var testInputs = orderedInputs
+            .Skip(trainCount)
+            .ToList();
+
+        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
+        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
+
+        var pipeline = CreateBasePipeline()
+            .Append(_mlContext.BinaryClassification.Trainers.FastTree(
+                labelColumnName: "Label",
+                featureColumnName: "Features",
+                numberOfLeaves: 8,
+                numberOfTrees: 100,
+                minimumExampleCountPerLeaf: 10));
+
+        var model = pipeline.Fit(trainSet);
+
+        var transformedTestSet = model.Transform(testSet);
+
+        var baselineMetrics = _mlContext.BinaryClassification.Evaluate(
+            transformedTestSet,
+            labelColumnName: "Label");
+
+        Console.WriteLine();
+        Console.WriteLine("=== Baseline ===");
+        Console.WriteLine($"Accuracy: {baselineMetrics.Accuracy:P2}");
+        Console.WriteLine($"AUC     : {baselineMetrics.AreaUnderRocCurve:P2}");
+        Console.WriteLine($"F1Score : {baselineMetrics.F1Score:P2}");
+
+        var featureNames = new[]
+        {
+            nameof(MlStockPredictionInput.FinancialScore),
+            nameof(MlStockPredictionInput.GrowthScore),
+            nameof(MlStockPredictionInput.DividendScore),
+            nameof(MlStockPredictionInput.RoeScore),
+            nameof(MlStockPredictionInput.PerScore),
+            nameof(MlStockPredictionInput.PbrScore),
+            nameof(MlStockPredictionInput.TechnicalScore),
+            nameof(MlStockPredictionInput.SwingScore),
+            nameof(MlStockPredictionInput.MarketScore),
+            nameof(MlStockPredictionInput.Momentum5),
+            nameof(MlStockPredictionInput.Momentum25),
+            nameof(MlStockPredictionInput.DeviationFromMa25),
+            nameof(MlStockPredictionInput.VolumeRatio5),
+            nameof(MlStockPredictionInput.ClosePositionInRange25),
+            nameof(MlStockPredictionInput.TopixMomentum25),
+            nameof(MlStockPredictionInput.Sp500Momentum25),
+            nameof(MlStockPredictionInput.NasdaqMomentum25),
+            nameof(MlStockPredictionInput.UsdJpyMomentum25),
+            nameof(MlStockPredictionInput.VixMomentum25),
+            nameof(MlStockPredictionInput.Ma25Slope),
+            nameof(MlStockPredictionInput.Ma75Slope)
+        };
+
+        var results = new List<(string FeatureName, double AucDrop, double AccuracyDrop, double F1Drop)>();
+
+        foreach (var featureName in featureNames)
+        {
+            var shuffledInputs = testInputs
+                .Select(x => CloneInput(x))
+                .ToList();
+
+            ShuffleFeature(
+                shuffledInputs,
+                featureName);
+
+            var shuffledSet =
+                _mlContext.Data.LoadFromEnumerable(shuffledInputs);
+
+            var shuffledPredictions =
+                model.Transform(shuffledSet);
+
+            var shuffledMetrics =
+                _mlContext.BinaryClassification.Evaluate(
+                    shuffledPredictions,
+                    labelColumnName: "Label");
+
+            results.Add((
+                FeatureName: featureName,
+                AucDrop: baselineMetrics.AreaUnderRocCurve - shuffledMetrics.AreaUnderRocCurve,
+                AccuracyDrop: baselineMetrics.Accuracy - shuffledMetrics.Accuracy,
+                F1Drop: baselineMetrics.F1Score - shuffledMetrics.F1Score));
+        }
+
+        foreach (var item in results.OrderByDescending(x => x.AucDrop))
+        {
+            Console.WriteLine(
+                $"{item.FeatureName,-28} " +
+                $"AucDrop:{item.AucDrop,8:F4} " +
+                $"AccuracyDrop:{item.AccuracyDrop,8:F4} " +
+                $"F1Drop:{item.F1Drop,8:F4}");
+        }
+
+        Console.WriteLine("=== Up5 Feature Importance 終了 ===");
+    }
+
+    private static MlStockPredictionInput CloneInput(MlStockPredictionInput source)
+    {
+        return new MlStockPredictionInput
+        {
+            TradeDate = source.TradeDate,
+
+            FinancialScore = source.FinancialScore,
+            GrowthScore = source.GrowthScore,
+            DividendScore = source.DividendScore,
+            RoeScore = source.RoeScore,
+            PerScore = source.PerScore,
+            PbrScore = source.PbrScore,
+            TechnicalScore = source.TechnicalScore,
+            SwingScore = source.SwingScore,
+            MarketScore = source.MarketScore,
+
+            Momentum5 = source.Momentum5,
+            Momentum25 = source.Momentum25,
+            DeviationFromMa25 = source.DeviationFromMa25,
+            VolumeRatio5 = source.VolumeRatio5,
+            ClosePositionInRange25 = source.ClosePositionInRange25,
+            Ma25Slope = source.Ma25Slope,
+            Ma75Slope = source.Ma75Slope,
+
+            TopixMomentum25 = source.TopixMomentum25,
+            Sp500Momentum25 = source.Sp500Momentum25,
+            NasdaqMomentum25 = source.NasdaqMomentum25,
+            UsdJpyMomentum25 = source.UsdJpyMomentum25,
+            VixMomentum25 = source.VixMomentum25,
+
+            Up5 = source.Up5
+        };
+    }
+
+    private static void ShuffleFeature(
+        List<MlStockPredictionInput> inputs,
+        string featureName)
+    {
+        var random = new Random(1);
+
+        var values = inputs
+            .Select(x => GetFeatureValue(x, featureName))
+            .OrderBy(_ => random.Next())
+            .ToList();
+
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            SetFeatureValue(
+                inputs[i],
+                featureName,
+                values[i]);
+        }
+    }
+
+    private static float GetFeatureValue(
+        MlStockPredictionInput input,
+        string featureName)
+    {
+        return featureName switch
+        {
+            nameof(MlStockPredictionInput.FinancialScore) => input.FinancialScore,
+            nameof(MlStockPredictionInput.GrowthScore) => input.GrowthScore,
+            nameof(MlStockPredictionInput.DividendScore) => input.DividendScore,
+            nameof(MlStockPredictionInput.RoeScore) => input.RoeScore,
+            nameof(MlStockPredictionInput.PerScore) => input.PerScore,
+            nameof(MlStockPredictionInput.PbrScore) => input.PbrScore,
+            nameof(MlStockPredictionInput.TechnicalScore) => input.TechnicalScore,
+            nameof(MlStockPredictionInput.SwingScore) => input.SwingScore,
+            nameof(MlStockPredictionInput.MarketScore) => input.MarketScore,
+            nameof(MlStockPredictionInput.Momentum5) => input.Momentum5,
+            nameof(MlStockPredictionInput.Momentum25) => input.Momentum25,
+            nameof(MlStockPredictionInput.DeviationFromMa25) => input.DeviationFromMa25,
+            nameof(MlStockPredictionInput.VolumeRatio5) => input.VolumeRatio5,
+            nameof(MlStockPredictionInput.ClosePositionInRange25) => input.ClosePositionInRange25,
+            nameof(MlStockPredictionInput.TopixMomentum25) => input.TopixMomentum25,
+            nameof(MlStockPredictionInput.Sp500Momentum25) => input.Sp500Momentum25,
+            nameof(MlStockPredictionInput.NasdaqMomentum25) => input.NasdaqMomentum25,
+            nameof(MlStockPredictionInput.UsdJpyMomentum25) => input.UsdJpyMomentum25,
+            nameof(MlStockPredictionInput.VixMomentum25) => input.VixMomentum25,
+            nameof(MlStockPredictionInput.Ma25Slope) => input.Ma25Slope,
+            nameof(MlStockPredictionInput.Ma75Slope) => input.Ma75Slope,
+            _ => 0f
+        };
+    }
+
+    private static void SetFeatureValue(
+        MlStockPredictionInput input,
+        string featureName,
+        float value)
+    {
+        switch (featureName)
+        {
+            case nameof(MlStockPredictionInput.FinancialScore):
+                input.FinancialScore = value;
+                break;
+            case nameof(MlStockPredictionInput.GrowthScore):
+                input.GrowthScore = value;
+                break;
+            case nameof(MlStockPredictionInput.DividendScore):
+                input.DividendScore = value;
+                break;
+            case nameof(MlStockPredictionInput.RoeScore):
+                input.RoeScore = value;
+                break;
+            case nameof(MlStockPredictionInput.PerScore):
+                input.PerScore = value;
+                break;
+            case nameof(MlStockPredictionInput.PbrScore):
+                input.PbrScore = value;
+                break;
+            case nameof(MlStockPredictionInput.TechnicalScore):
+                input.TechnicalScore = value;
+                break;
+            case nameof(MlStockPredictionInput.SwingScore):
+                input.SwingScore = value;
+                break;
+            case nameof(MlStockPredictionInput.MarketScore):
+                input.MarketScore = value;
+                break;
+            case nameof(MlStockPredictionInput.Momentum5):
+                input.Momentum5 = value;
+                break;
+            case nameof(MlStockPredictionInput.Momentum25):
+                input.Momentum25 = value;
+                break;
+            case nameof(MlStockPredictionInput.DeviationFromMa25):
+                input.DeviationFromMa25 = value;
+                break;
+            case nameof(MlStockPredictionInput.VolumeRatio5):
+                input.VolumeRatio5 = value;
+                break;
+            case nameof(MlStockPredictionInput.ClosePositionInRange25):
+                input.ClosePositionInRange25 = value;
+                break;
+            case nameof(MlStockPredictionInput.TopixMomentum25):
+                input.TopixMomentum25 = value;
+                break;
+            case nameof(MlStockPredictionInput.Sp500Momentum25):
+                input.Sp500Momentum25 = value;
+                break;
+            case nameof(MlStockPredictionInput.NasdaqMomentum25):
+                input.NasdaqMomentum25 = value;
+                break;
+            case nameof(MlStockPredictionInput.UsdJpyMomentum25):
+                input.UsdJpyMomentum25 = value;
+                break;
+            case nameof(MlStockPredictionInput.VixMomentum25):
+                input.VixMomentum25 = value;
+                break;
+            case nameof(MlStockPredictionInput.Ma25Slope):
+                input.Ma25Slope = value;
+                break;
+            case nameof(MlStockPredictionInput.Ma75Slope):
+                input.Ma75Slope = value;
+                break;
+        }
+    }
 }
