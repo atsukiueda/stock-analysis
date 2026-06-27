@@ -6,6 +6,7 @@ using static System.Formats.Asn1.AsnWriter;
 using Microsoft.ML.Trainers.FastTree;
 using StockAnalysis.Batch.Models.Ml;
 using StockAnalysis.Batch.Services.Interfaces;
+using System.Globalization;
 
 namespace StockAnalysis.Batch.Services;
 
@@ -18,18 +19,13 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
     private readonly StockAnalysisDbContext _db;
     private readonly MLContext _mlContext;
 
-    private readonly Dictionary<DateTime, MarketFeatureValues> _marketFeatureCache = new();
+    private readonly MlFeatureCalculationService _featureCalculationService;
 
-    private readonly Dictionary<string, TechnicalFeatureValues?> _technicalFeatureCache = new();
-
-    private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
-
-    private readonly Dictionary<string, List<MarketIndexDaily>> _marketIndexHistoryCache = new();
-
-    public MlUp5PredictionService(StockAnalysisDbContext db)
+    public MlUp5PredictionService(
+    StockAnalysisDbContext db)
     {
         _db = db;
-        _mlContext = new MLContext(seed: 1);
+        _featureCalculationService = new MlFeatureCalculationService(db);
     }
 
     /// <summary>
@@ -138,7 +134,7 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
         {
             var score = x.Score;
 
-            var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
+            var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
                 score.Code,
                 score.ScoreDate);
 
@@ -147,7 +143,7 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
                 continue;
             }
 
-            var marketFeatures = await CalculateMarketFeaturesAsync(score.ScoreDate);
+            var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(score.ScoreDate);
 
             var input = new MlStockPredictionInput
             {
@@ -194,168 +190,6 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
         //}
     }
 
-    private async Task<TechnicalFeatureValues?> CalculateTechnicalFeaturesAsync(
-    string code,
-    DateTime tradeDate)
-    {
-        var allPrices = await GetPriceHistoryWithCacheAsync(code);
-
-        var prices = allPrices
-            .Where(x => x.TradeDate <= tradeDate)
-            .TakeLast(80)
-            .ToList();
-
-        if (prices.Count < 80)
-        {
-            return null;
-        }
-
-        var latest = prices[^1];
-
-        if (latest.ClosePrice == null || latest.ClosePrice <= 0)
-        {
-            return null;
-        }
-
-        var latestClose = latest.ClosePrice.Value;
-
-        var close5Ago = prices[^6].ClosePrice;
-        var close25Ago = prices[^26].ClosePrice;
-
-        if (close5Ago == null || close5Ago <= 0 ||
-            close25Ago == null || close25Ago <= 0)
-        {
-            return null;
-        }
-
-        var latest25Prices = prices.TakeLast(25).ToList();
-        var previous25Prices = prices.Skip(prices.Count - 30).Take(25).ToList();
-
-        var latest75Prices = prices.TakeLast(75).ToList();
-        var previous75Prices = prices.Skip(prices.Count - 80).Take(75).ToList();
-
-        var ma25 = latest25Prices.Average(x => x.ClosePrice!.Value);
-        var previousMa25 = previous25Prices.Average(x => x.ClosePrice!.Value);
-
-        var ma75 = latest75Prices.Average(x => x.ClosePrice!.Value);
-        var previousMa75 = previous75Prices.Average(x => x.ClosePrice!.Value);
-
-        var avgVolume5 = prices
-            .TakeLast(5)
-            .Where(x => x.Volume != null)
-            .Average(x => x.Volume!.Value);
-
-        var avgVolume25 = latest25Prices
-            .Where(x => x.Volume != null)
-            .Average(x => x.Volume!.Value);
-
-        var high25 = latest25Prices
-            .Where(x => x.HighPrice != null)
-            .Max(x => x.HighPrice!.Value);
-
-        var low25 = latest25Prices
-            .Where(x => x.LowPrice != null)
-            .Min(x => x.LowPrice!.Value);
-
-        var range25 = high25 - low25;
-
-        return new TechnicalFeatureValues
-        {
-            Momentum5 = (float)((latestClose - close5Ago.Value) / close5Ago.Value * 100m),
-            Momentum25 = (float)((latestClose - close25Ago.Value) / close25Ago.Value * 100m),
-            DeviationFromMa25 = ma25 <= 0
-                ? 0
-                : (float)((latestClose - ma25) / ma25 * 100m),
-            VolumeRatio5 = avgVolume25 <= 0
-                ? 0
-                : (float)(avgVolume5 / avgVolume25),
-            ClosePositionInRange25 = range25 <= 0
-                ? 0.5f
-                : (float)((latestClose - low25) / range25),
-            Ma25Slope = previousMa25 <= 0
-                ? 0
-                : (float)((ma25 - previousMa25) / previousMa25 * 100m),
-            Ma75Slope = previousMa75 <= 0
-                ? 0
-                : (float)((ma75 - previousMa75) / previousMa75 * 100m)
-        };
-    }
-
-    private async Task<TechnicalFeatureValues?> GetTechnicalFeaturesWithCacheAsync(
-    string code,
-    DateTime tradeDate)
-    {
-        var key = $"{code}_{tradeDate:yyyyMMdd}";
-
-        if (_technicalFeatureCache.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-            code,
-            tradeDate);
-
-        _technicalFeatureCache[key] = technicalFeatures;
-
-        return technicalFeatures;
-    }
-
-    private async Task<MarketFeatureValues> CalculateMarketFeaturesAsync(
-    DateTime tradeDate)
-    {
-        return new MarketFeatureValues
-        {
-            TopixMomentum25 = await CalculateMarketMomentum25Async("TOPIX", tradeDate),
-            Sp500Momentum25 = await CalculateMarketMomentum25Async("SP500", tradeDate),
-            NasdaqMomentum25 = await CalculateMarketMomentum25Async("NASDAQ", tradeDate),
-            UsdJpyMomentum25 = await CalculateMarketMomentum25Async("USDJPY", tradeDate),
-            VixMomentum25 = await CalculateMarketMomentum25Async("VIX", tradeDate)
-        };
-    }
-
-    private async Task<MarketFeatureValues> GetMarketFeaturesWithCacheAsync(
-DateTime tradeDate)
-    {
-        if (_marketFeatureCache.TryGetValue(tradeDate, out var cached))
-        {
-            return cached;
-        }
-
-        var marketFeatures = await CalculateMarketFeaturesAsync(tradeDate);
-
-        _marketFeatureCache[tradeDate] = marketFeatures;
-
-        return marketFeatures;
-    }
-
-    private async Task<float> CalculateMarketMomentum25Async(
-    string indexName,
-    DateTime tradeDate)
-    {
-        var allPrices = await GetMarketIndexHistoryWithCacheAsync(indexName);
-
-        var prices = allPrices
-            .Where(x => x.TradeDate <= tradeDate)
-            .TakeLast(25)
-            .ToList();
-
-        if (prices.Count < 25)
-        {
-            return 0;
-        }
-
-        var first = prices[0].CloseValue;
-        var latest = prices[^1].CloseValue;
-
-        if (first == null || first <= 0 || latest == null)
-        {
-            return 0;
-        }
-
-        return (float)((latest.Value - first.Value) / first.Value * 100m);
-    }
-
     private class MlStockPredictionWithLabel
     {
         public bool Label { get; set; }
@@ -365,36 +199,6 @@ DateTime tradeDate)
         public float Probability { get; set; }
 
         public float Score { get; set; }
-    }
-
-    private class TechnicalFeatureValues
-    {
-        public float Momentum5 { get; set; }
-
-        public float Momentum25 { get; set; }
-
-        public float DeviationFromMa25 { get; set; }
-
-        public float VolumeRatio5 { get; set; }
-
-        public float ClosePositionInRange25 { get; set; }
-
-        public float Ma25Slope { get; set; }
-
-        public float Ma75Slope { get; set; }
-    }
-
-    private class MarketFeatureValues
-    {
-        public float TopixMomentum25 { get; set; }
-
-        public float Sp500Momentum25 { get; set; }
-
-        public float NasdaqMomentum25 { get; set; }
-
-        public float UsdJpyMomentum25 { get; set; }
-
-        public float VixMomentum25 { get; set; }
     }
 
     private class ModelEvaluationResult
@@ -488,7 +292,8 @@ DateTime tradeDate)
 
         var priceHistoryMap = await GetPriceHistoryMapAsync(targetCodes);
 
-        var marketFeatures = await GetMarketFeaturesWithCacheAsync(latestScoreDate);
+        var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
+            latestScoreDate);
 
         var inputs = new List<MlStockPredictionInput>();
         var codeList = new List<string>();
@@ -638,7 +443,7 @@ DateTime tradeDate)
             _predictionEngineCache[modelName] = predictionEngine;
         }
 
-        var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
+        var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
             score.Code,
             score.ScoreDate);
 
@@ -647,7 +452,8 @@ DateTime tradeDate)
             return null;
         }
 
-        var marketFeatures = await GetMarketFeaturesWithCacheAsync(score.ScoreDate);
+        var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
+            score.ScoreDate);
 
         var input = new MlStockPredictionInput
         {
@@ -818,10 +624,10 @@ DateTime tradeDate)
                 nameof(MlStockPredictionInput.VolumeRatio5),
                 nameof(MlStockPredictionInput.ClosePositionInRange25),
                 nameof(MlStockPredictionInput.TopixMomentum25),
-                nameof(MlStockPredictionInput.Sp500Momentum25),
-                nameof(MlStockPredictionInput.NasdaqMomentum25),
-                nameof(MlStockPredictionInput.UsdJpyMomentum25),
-                nameof(MlStockPredictionInput.VixMomentum25),
+                //nameof(MlStockPredictionInput.Sp500Momentum25),
+                //nameof(MlStockPredictionInput.NasdaqMomentum25),
+                //nameof(MlStockPredictionInput.UsdJpyMomentum25),
+                //nameof(MlStockPredictionInput.VixMomentum25),
                 nameof(MlStockPredictionInput.Ma25Slope),
                 nameof(MlStockPredictionInput.Ma75Slope))
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
@@ -849,90 +655,16 @@ DateTime tradeDate)
     private async Task<List<MlStockPredictionInput>> CreateTrainingInputsAsync(
     TrainingPeriod period)
     {
-        var excludedNameKeywords = new[]
-        {
-        "ＥＴＦ",
-        "ETF",
-        "投信",
-        "上場投信",
-        "インデックスファンド",
-        "ＮＥＸＴ　ＦＵＮＤＳ",
-        "MAXIS",
-        "ｉＦｒｅｅＥＴＦ",
-        "iFreeETF",
-        "グローバルＸ",
-        "REIT",
-        "リート",
-        "ETN"
-    };
+        // CSVキャッシュから学習データを読み込む。
+        var inputs = LoadTrainingDataFromCsv();
 
-        var trainingSourceRows = await _db.MlTrainingData
-            .AsNoTracking()
-            .Where(x => x.FutureReturn5 != null)
-            .Where(x => x.TradeDate >= period.TrainFrom)
-            .Where(x => x.TradeDate <= period.TrainTo)
-            .Join(
-                _db.Companies,
-                ml => ml.Code,
-                company => company.Code,
-                (ml, company) => new
-                {
-                    Ml = ml,
-                    Company = company
-                })
-            .Where(x => x.Company.IsActive)
-            .ToListAsync();
-
-        var inputs = new List<MlStockPredictionInput>();
-
-        foreach (var row in trainingSourceRows
-                     .Where(x => !excludedNameKeywords.Any(keyword =>
-                         x.Company.CompanyName.Contains(keyword)))
-                     .OrderBy(x => x.Ml.TradeDate))
-        {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-                row.Ml.Code,
-                row.Ml.TradeDate);
-
-            if (technicalFeatures == null)
-            {
-                continue;
-            }
-
-            var marketFeatures = await CalculateMarketFeaturesAsync(
-                row.Ml.TradeDate);
-
-            inputs.Add(new MlStockPredictionInput
-            {
-                TradeDate = row.Ml.TradeDate,
-
-                FinancialScore = row.Ml.FinancialScore,
-                GrowthScore = row.Ml.GrowthScore,
-                DividendScore = row.Ml.DividendScore,
-                RoeScore = row.Ml.RoeScore,
-                PerScore = row.Ml.PerScore,
-                PbrScore = row.Ml.PbrScore,
-                TechnicalScore = row.Ml.TechnicalScore,
-                SwingScore = row.Ml.SwingScore,
-                MarketScore = row.Ml.MarketScore,
-
-                Momentum5 = technicalFeatures.Momentum5,
-                Momentum25 = technicalFeatures.Momentum25,
-                DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-                VolumeRatio5 = technicalFeatures.VolumeRatio5,
-                ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-                Ma25Slope = technicalFeatures.Ma25Slope,
-                Ma75Slope = technicalFeatures.Ma75Slope,
-
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25,
-
-                Up5 = row.Ml.Up5
-            });
-        }
+        // 学習期間のみ抽出する。
+        inputs = inputs
+            .Where(x =>
+                x.TradeDate >= period.TrainFrom &&
+                x.TradeDate <= period.TrainTo)
+            .OrderBy(x => x.TradeDate)
+            .ToList();
 
         return inputs;
     }
@@ -960,43 +692,6 @@ DateTime tradeDate)
             $"{modelName}.zip");
     }
 
-    private async Task<List<PriceDaily>> GetPriceHistoryWithCacheAsync(string code)
-    {
-        if (_priceHistoryCache.TryGetValue(code, out var cached))
-        {
-            return cached;
-        }
-
-        var prices = await _db.PricesDaily
-            .Where(x => x.Code == code)
-            .Where(x => x.ClosePrice != null)
-            .OrderBy(x => x.TradeDate)
-            .ToListAsync();
-
-        _priceHistoryCache[code] = prices;
-
-        return prices;
-    }
-
-    private async Task<List<MarketIndexDaily>> GetMarketIndexHistoryWithCacheAsync(
-    string indexName)
-    {
-        if (_marketIndexHistoryCache.TryGetValue(indexName, out var cached))
-        {
-            return cached;
-        }
-
-        var prices = await _db.MarketIndicesDaily
-            .Where(x => x.IndexName == indexName)
-            .Where(x => x.CloseValue != null)
-            .OrderBy(x => x.TradeDate)
-            .ToListAsync();
-
-        _marketIndexHistoryCache[indexName] = prices;
-
-        return prices;
-    }
-
     private async Task<Dictionary<string, List<PriceDaily>>> GetPriceHistoryMapAsync(
     IReadOnlyCollection<string> codes)
     {
@@ -1015,7 +710,7 @@ DateTime tradeDate)
                 g => g.ToList());
     }
 
-    private TechnicalFeatureValues? CalculateTechnicalFeaturesFromPrices(
+    private MlTechnicalFeatures? CalculateTechnicalFeaturesFromPrices(
     List<PriceDaily> allPrices,
     DateTime tradeDate)
     {
@@ -1078,7 +773,7 @@ DateTime tradeDate)
 
         var range25 = high25 - low25;
 
-        return new TechnicalFeatureValues
+        return new MlTechnicalFeatures
         {
             Momentum5 = (float)((latestClose - close5Ago.Value) / close5Ago.Value * 100m),
 
@@ -1183,10 +878,10 @@ DateTime tradeDate)
             nameof(MlStockPredictionInput.VolumeRatio5),
             nameof(MlStockPredictionInput.ClosePositionInRange25),
             nameof(MlStockPredictionInput.TopixMomentum25),
-            nameof(MlStockPredictionInput.Sp500Momentum25),
-            nameof(MlStockPredictionInput.NasdaqMomentum25),
-            nameof(MlStockPredictionInput.UsdJpyMomentum25),
-            nameof(MlStockPredictionInput.VixMomentum25),
+            //nameof(MlStockPredictionInput.Sp500Momentum25),
+            //nameof(MlStockPredictionInput.NasdaqMomentum25),
+            //nameof(MlStockPredictionInput.UsdJpyMomentum25),
+            //nameof(MlStockPredictionInput.VixMomentum25),
             nameof(MlStockPredictionInput.Ma25Slope),
             nameof(MlStockPredictionInput.Ma75Slope)
         };
@@ -1389,5 +1084,102 @@ DateTime tradeDate)
                 input.Ma75Slope = value;
                 break;
         }
+    }
+
+    /// <summary>
+    /// CSVキャッシュからUp5学習用データを読み込む。
+    /// 学習・特徴量重要度分析・ウォークフォワード検証でDBアクセスを避けるために使用する。
+    /// </summary>
+    /// <returns>Up5学習用入力データ。</returns>
+    private List<MlStockPredictionInput> LoadTrainingDataFromCsv()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "MlCache",
+            "up5_training_data.csv");
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException(
+                $"Up5学習用CSVキャッシュが見つかりません。先にExportUp5TrainingDataAsyncを実行してください: {path}");
+        }
+
+        var lines = File.ReadAllLines(path)
+            .Skip(1);
+
+        var list = new List<MlStockPredictionInput>();
+
+        foreach (var line in lines)
+        {
+            // 空行は学習データとして扱わない。
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var c = line.Split(',');
+
+            // CSV列数が想定と異なる場合は、キャッシュの生成ミスとして明示的に止める。
+            if (c.Length < 25)
+            {
+                throw new InvalidOperationException(
+                    $"Up5学習用CSVの列数が不足しています。Columns:{c.Length}, Line:{line}");
+            }
+
+            list.Add(new MlStockPredictionInput
+            {
+                TradeDate = DateTime.Parse(
+                    c[0],
+                    CultureInfo.InvariantCulture),
+
+                Code = c[1],
+
+                FinancialScore = ParseFloat(c[2]),
+                GrowthScore = ParseFloat(c[3]),
+                DividendScore = ParseFloat(c[4]),
+                RoeScore = ParseFloat(c[5]),
+                PerScore = ParseFloat(c[6]),
+                PbrScore = ParseFloat(c[7]),
+                TechnicalScore = ParseFloat(c[8]),
+                SwingScore = ParseFloat(c[9]),
+                MarketScore = ParseFloat(c[10]),
+
+                Momentum5 = ParseFloat(c[11]),
+                Momentum25 = ParseFloat(c[12]),
+                DeviationFromMa25 = ParseFloat(c[13]),
+                VolumeRatio5 = ParseFloat(c[14]),
+                ClosePositionInRange25 = ParseFloat(c[15]),
+                Ma25Slope = ParseFloat(c[16]),
+                Ma75Slope = ParseFloat(c[17]),
+
+                TopixMomentum25 = ParseFloat(c[18]),
+                Sp500Momentum25 = ParseFloat(c[19]),
+                NasdaqMomentum25 = ParseFloat(c[20]),
+                UsdJpyMomentum25 = ParseFloat(c[21]),
+                VixMomentum25 = ParseFloat(c[22]),
+
+                Up5 = bool.Parse(c[24])
+            });
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// CSV文字列をfloat値へ変換する。
+    /// 空文字は0として扱い、CSVキャッシュ生成時の欠損値で学習処理が停止しないようにする。
+    /// </summary>
+    /// <param name="value">CSVから読み込んだ文字列。</param>
+    /// <returns>float値。</returns>
+    private static float ParseFloat(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0f;
+        }
+
+        return float.Parse(
+            value,
+            CultureInfo.InvariantCulture);
     }
 }

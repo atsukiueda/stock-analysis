@@ -42,4 +42,10 @@ public class MlStockPredictionInput
 
     [ColumnName("Label")]
     public bool Up5 { get; set; }
+
+    /// <summary>
+    /// 銘柄コード。
+    /// CSVキャッシュやバックテスト結果との突合に使用する。
+    /// </summary>
+    public string Code { get; set; } = string.Empty;
 }

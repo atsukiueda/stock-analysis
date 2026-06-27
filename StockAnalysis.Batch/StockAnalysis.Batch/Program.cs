@@ -29,15 +29,16 @@ const bool RUN_FINANCIAL_IMPORT_100 = false;
 const bool RUN_SWING_ADVICE = false;
 const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
-const bool RUN_ML_UP5_TRAINING = false;
-const bool RUN_WALK_FORWARD_UP5 = false;
 const bool RUN_ML_UP10_TRAINING = false;
 const bool RUN_SCREENING = false;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
 const bool RUN_BACKTEST = false;
 const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
-const bool RUN_UP5_FEATURE_IMPORTANCE_WF = true;
+const bool RUN_UP5_FEATURE_IMPORTANCE_WF = false;
+const bool RUN_ML_UP5_TRAINING = false;
+const bool RUN_WALK_FORWARD_UP5 = true;
+const bool RUN_EXPORT_UP5_ML_CACHE = false;
 
 
 // ==============================
@@ -1174,6 +1175,8 @@ if (RUN_ML_UP5_TRAINING)
     await service.TrainAndEvaluateAsync();
 
     Console.WriteLine("=== Up5 ML.NET 学習終了 ===");
+
+    return;
 }
 
 var mlTrainingDataSummary = await db.MlTrainingData
@@ -1279,6 +1282,7 @@ if (RUN_ML_UP10_TRAINING)
     await service.TrainAndEvaluateAsync();
 
     Console.WriteLine("=== Up10 ML.NET 学習終了 ===");
+
 }
 
 // ==============================
@@ -1295,6 +1299,24 @@ if (RUN_ML_TAKE_PROFIT_TRAINING)
     await service.TrainAndEvaluateAsync();
 
     Console.WriteLine("=== TakeProfit ML.NET 学習終了 ===");
+}
+
+if (RUN_EXPORT_UP5_ML_CACHE)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== Up5 MLキャッシュCSV出力開始 ===");
+
+    var featureCalculationService = new MlFeatureCalculationService(db);
+
+    var cacheService = new MlTrainingDataCacheService(
+        db,
+        featureCalculationService);
+
+    await cacheService.ExportUp5TrainingDataAsync();
+
+    Console.WriteLine("=== Up5 MLキャッシュCSV出力終了 ===");
+
+    return;
 }
 
 // ==============================
