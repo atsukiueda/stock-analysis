@@ -7,6 +7,7 @@ using System.Text;
 using StockAnalysis.Batch.Backtest.Analysis;
 using StockAnalysis.Batch.Backtest.Report;
 using StockAnalysis.Batch.Backtest.Scenario;
+using StockAnalysis.Batch.Services.Ml.Prediction;
 
 namespace StockAnalysis.Batch.Services;
 

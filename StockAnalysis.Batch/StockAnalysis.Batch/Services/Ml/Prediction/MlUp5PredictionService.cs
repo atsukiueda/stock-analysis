@@ -8,8 +8,9 @@ using StockAnalysis.Batch.Models.Ml;
 using StockAnalysis.Batch.Services.Interfaces;
 using System.Globalization;
 using StockAnalysis.Batch.Services.Ml.Base;
+using StockAnalysis.Batch.Services.Ml.Features;
 
-namespace StockAnalysis.Batch.Services;
+namespace StockAnalysis.Batch.Services.Ml.Prediction;
 
 public class MlUp5PredictionService : MlBinaryPredictionServiceBase, IMlWalkForwardTrainingService
 {

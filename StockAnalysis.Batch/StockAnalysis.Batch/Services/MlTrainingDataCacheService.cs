@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
+using StockAnalysis.Batch.Services.Ml.Features;
 
 namespace StockAnalysis.Batch.Services;
 

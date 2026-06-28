@@ -3,7 +3,7 @@ using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
 using StockAnalysis.Batch.Models.Ml;
 
-namespace StockAnalysis.Batch.Services;
+namespace StockAnalysis.Batch.Services.Ml.Features;
 
 /// <summary>
 /// MLモデルで使用するテクニカル特徴量・市場特徴量の計算を担当するサービス。
@@ -41,6 +41,7 @@ public class MlFeatureCalculationService
         string code,
         DateTime tradeDate)
     {
+        // 特徴量計算に必要な価格履歴をDBから取得する。
         var prices = await _db.PricesDaily
             .AsNoTracking()
             .Where(x => x.Code == code)
@@ -50,6 +51,29 @@ public class MlFeatureCalculationService
             .Take(80)
             .OrderBy(x => x.TradeDate)
             .ToListAsync();
+
+        // 実際のテクニカル特徴量計算は、取得済み価格履歴用メソッドへ委譲する。
+        return CalculateTechnicalFeaturesFromPrices(
+            prices,
+            tradeDate);
+    }
+
+    /// <summary>
+    /// 取得済み価格履歴から、指定日のテクニカル特徴量を計算する。
+    /// PredictLatest系のように価格履歴を一括取得済みの場合に使用し、銘柄ごとのDBアクセスを避ける。
+    /// </summary>
+    /// <param name="allPrices">対象銘柄の価格履歴。日付昇順を想定する。</param>
+    /// <param name="tradeDate">基準日。</param>
+    /// <returns>テクニカル特徴量。計算不能な場合はnull。</returns>
+    public MlTechnicalFeatures? CalculateTechnicalFeaturesFromPrices(
+        IReadOnlyList<PriceDaily> allPrices,
+        DateTime tradeDate)
+    {
+        // 指定日以前の価格を最大80件取得する。
+        var prices = allPrices
+            .Where(x => x.TradeDate <= tradeDate)
+            .TakeLast(80)
+            .ToList();
 
         if (prices.Count < 25)
         {
@@ -77,8 +101,11 @@ public class MlFeatureCalculationService
         var momentum5 = CalculateReturn(close5Ago, close);
         var momentum25 = CalculateReturn(close25Ago, close);
 
-        var ma25 = prices
+        var latest25Prices = prices
             .TakeLast(25)
+            .ToList();
+
+        var ma25 = latest25Prices
             .Where(x => x.ClosePrice != null)
             .Average(x => x.ClosePrice!.Value);
 
@@ -94,8 +121,7 @@ public class MlFeatureCalculationService
             .DefaultIfEmpty(0)
             .Average();
 
-        var volume25Average = prices
-            .TakeLast(25)
+        var volume25Average = latest25Prices
             .Where(x => x.Volume != null)
             .Select(x => x.Volume!.Value)
             .DefaultIfEmpty(0)
@@ -106,13 +132,11 @@ public class MlFeatureCalculationService
                 ? (decimal)(volume5Average / volume25Average)
                 : 0m;
 
-        var high25 = prices
-            .TakeLast(25)
+        var high25 = latest25Prices
             .Where(x => x.HighPrice != null)
             .Max(x => x.HighPrice!.Value);
 
-        var low25 = prices
-            .TakeLast(25)
+        var low25 = latest25Prices
             .Where(x => x.LowPrice != null)
             .Min(x => x.LowPrice!.Value);
 

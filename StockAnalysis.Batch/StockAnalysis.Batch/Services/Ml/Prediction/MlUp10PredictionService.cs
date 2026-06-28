@@ -7,8 +7,9 @@ using Microsoft.ML.Trainers.FastTree;
 using System.Globalization;
 using StockAnalysis.Batch.Models.Ml;
 using StockAnalysis.Batch.Services.Ml.Base;
+using StockAnalysis.Batch.Services.Ml.Features;
 
-namespace StockAnalysis.Batch.Services;
+namespace StockAnalysis.Batch.Services.Ml.Prediction;
 
 public class MlUp10PredictionService : MlBinaryPredictionServiceBase
 {
@@ -20,9 +21,9 @@ public class MlUp10PredictionService : MlBinaryPredictionServiceBase
 
     private readonly MlFeatureCalculationService _featureCalculationService;
 
-    private readonly Dictionary<DateTime, StockAnalysis.Batch.Models.Ml.MlMarketFeatures> _marketFeatureCache = new();
+    private readonly Dictionary<DateTime, MlMarketFeatures> _marketFeatureCache = new();
 
-    private readonly Dictionary<string, StockAnalysis.Batch.Models.Ml.MlTechnicalFeatures?> _technicalFeatureCache = new();
+    private readonly Dictionary<string, MlTechnicalFeatures?> _technicalFeatureCache = new();
 
     private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
 

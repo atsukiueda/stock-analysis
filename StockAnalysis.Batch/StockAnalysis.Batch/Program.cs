@@ -6,6 +6,8 @@ using StockAnalysis.Batch.Models;
 using StockAnalysis.Batch.Services;
 using static System.Formats.Asn1.AsnWriter;
 using StockAnalysis.Batch.Factories;
+using StockAnalysis.Batch.Services.Ml.Features;
+using StockAnalysis.Batch.Services.Ml.Prediction;
 
 // ==============================
 // 実行フラグ

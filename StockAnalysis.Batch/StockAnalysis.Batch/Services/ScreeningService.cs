@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
+using StockAnalysis.Batch.Services.Ml.Prediction;
 
 namespace StockAnalysis.Batch.Services;
 

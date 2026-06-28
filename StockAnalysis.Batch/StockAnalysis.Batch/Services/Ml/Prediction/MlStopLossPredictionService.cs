@@ -2,12 +2,13 @@
 using Microsoft.ML;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
-using StockAnalysis.Batch.Services;
 using System.Globalization;
 using StockAnalysis.Batch.Services.Ml.Base;
 using StockAnalysis.Batch.Models.Ml;
+using StockAnalysis.Batch.Services.Ml.Inputs;
+using StockAnalysis.Batch.Services.Ml.Features;
 
-namespace StockAnalysis.Batch.Services;
+namespace StockAnalysis.Batch.Services.Ml.Prediction;
 
 public class MlStopLossPredictionService
 {
@@ -29,6 +30,8 @@ public class MlStopLossPredictionService
 
     private readonly MlFeatureCalculationService _featureCalculationService;
 
+    private readonly MlStopLossInputFactory _inputFactory;
+
     private readonly MlPredictionEngineStore<MlStopLossInput, MlStopLossOutput> _predictionEngineStore;
     public MlStopLossPredictionService(StockAnalysisDbContext db)
     {
@@ -39,6 +42,8 @@ public class MlStopLossPredictionService
 
         _regressionEvaluator = new MlRegressionEvaluator(_mlContext);
         _regressionPipelineFactory = new MlRegressionPipelineFactory(_mlContext);
+
+        _inputFactory = new MlStopLossInputFactory();
 
         _regressionTrainer = new MlRegressionTrainer(
             _mlContext,
@@ -527,41 +532,22 @@ public class MlStopLossPredictionService
                 continue;
             }
 
-            var technicalFeatures = CalculateTechnicalFeaturesFromPrices(
-                allPrices,
-                score.ScoreDate);
+            // テクニカル特徴量は共通特徴量計算サービスで算出する。
+            var technicalFeatures =
+                _featureCalculationService.CalculateTechnicalFeaturesFromPrices(
+                    allPrices,
+                    score.ScoreDate);
 
             if (technicalFeatures == null)
             {
                 continue;
             }
 
-            inputs.Add(new MlStopLossInput
-            {
-                FinancialScore = score.FinancialScore,
-                GrowthScore = score.GrowthScore,
-                DividendScore = score.DividendScore,
-                RoeScore = score.RoeScore,
-                PerScore = score.PerScore,
-                PbrScore = score.PbrScore,
-                TechnicalScore = score.TechnicalScore,
-                SwingScore = score.SwingScore,
-                MarketScore = score.MarketScore,
-
-                Momentum5 = technicalFeatures.Momentum5,
-                Momentum25 = technicalFeatures.Momentum25,
-                DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-                VolumeRatio5 = technicalFeatures.VolumeRatio5,
-                ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-                Ma25Slope = technicalFeatures.Ma25Slope,
-                Ma75Slope = technicalFeatures.Ma75Slope,
-
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25
-            });
+            // StopLossモデル用の入力生成は専用Factoryへ委譲する。
+            inputs.Add(_inputFactory.Create(
+                score,
+                technicalFeatures,
+                marketFeatures));
 
             codeList.Add(score.Code);
         }
@@ -632,30 +618,11 @@ public class MlStopLossPredictionService
         var marketFeatures =
             await _featureCalculationService.GetMarketFeaturesAsync(score.ScoreDate);
 
-        var input = new MlStopLossInput
-        {
-            FinancialScore = score.FinancialScore,
-            GrowthScore = score.GrowthScore,
-            DividendScore = score.DividendScore,
-            RoeScore = score.RoeScore,
-            PerScore = score.PerScore,
-            PbrScore = score.PbrScore,
-            TechnicalScore = score.TechnicalScore,
-            SwingScore = score.SwingScore,
-            MarketScore = score.MarketScore,
-
-            Momentum5 = technicalFeatures.Momentum5,
-            Momentum25 = technicalFeatures.Momentum25,
-            DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-            VolumeRatio5 = technicalFeatures.VolumeRatio5,
-            ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-            Ma25Slope = technicalFeatures.Ma25Slope,
-            Ma75Slope = technicalFeatures.Ma75Slope,
-
-            TopixMomentum25 = marketFeatures.TopixMomentum25,
-            UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-            VixMomentum25 = marketFeatures.VixMomentum25
-        };
+        // StopLossモデル用の入力生成は専用Factoryへ委譲する。
+        var input = _inputFactory.Create(
+            score,
+            technicalFeatures,
+            marketFeatures);
 
         var prediction = predictionEngine.Predict(input);
 
@@ -790,80 +757,5 @@ public class MlStopLossPredictionService
             .ToDictionary(
                 g => g.Key,
                 g => g.ToList());
-    }
-
-    private TechnicalFeatureValues? CalculateTechnicalFeaturesFromPrices(
-    List<PriceDaily> allPrices,
-    DateTime tradeDate)
-    {
-        var prices = allPrices
-            .Where(x => x.TradeDate <= tradeDate)
-            .TakeLast(80)
-            .ToList();
-
-        if (prices.Count < 80)
-        {
-            return null;
-        }
-
-        var latest = prices[^1];
-
-        if (latest.ClosePrice == null || latest.ClosePrice <= 0)
-        {
-            return null;
-        }
-
-        var latestClose = latest.ClosePrice.Value;
-
-        var close5Ago = prices[^6].ClosePrice;
-        var close25Ago = prices[^26].ClosePrice;
-
-        if (close5Ago == null || close5Ago <= 0 ||
-            close25Ago == null || close25Ago <= 0)
-        {
-            return null;
-        }
-
-        var latest25Prices = prices.TakeLast(25).ToList();
-        var previous25Prices = prices.Skip(prices.Count - 30).Take(25).ToList();
-
-        var latest75Prices = prices.TakeLast(75).ToList();
-        var previous75Prices = prices.Skip(prices.Count - 80).Take(75).ToList();
-
-        var ma25 = latest25Prices.Average(x => x.ClosePrice!.Value);
-        var previousMa25 = previous25Prices.Average(x => x.ClosePrice!.Value);
-
-        var ma75 = latest75Prices.Average(x => x.ClosePrice!.Value);
-        var previousMa75 = previous75Prices.Average(x => x.ClosePrice!.Value);
-
-        var avgVolume5 = prices
-            .TakeLast(5)
-            .Where(x => x.Volume != null)
-            .Average(x => x.Volume!.Value);
-
-        var avgVolume25 = latest25Prices
-            .Where(x => x.Volume != null)
-            .Average(x => x.Volume!.Value);
-
-        var high25 = latest25Prices
-            .Where(x => x.HighPrice != null)
-            .Max(x => x.HighPrice!.Value);
-
-        var low25 = latest25Prices
-            .Where(x => x.LowPrice != null)
-            .Min(x => x.LowPrice!.Value);
-
-        var range25 = high25 - low25;
-
-        return new TechnicalFeatureValues
-        {
-            Momentum5 = (float)((latestClose - close5Ago.Value) / close5Ago.Value * 100m),
-            Momentum25 = (float)((latestClose - close25Ago.Value) / close25Ago.Value * 100m),
-            DeviationFromMa25 = ma25 <= 0 ? 0 : (float)((latestClose - ma25) / ma25 * 100m),
-            VolumeRatio5 = avgVolume25 <= 0 ? 0 : (float)(avgVolume5 / avgVolume25),
-            ClosePositionInRange25 = range25 <= 0 ? 0.5f : (float)((latestClose - low25) / range25),
-            Ma25Slope = previousMa25 <= 0 ? 0 : (float)((ma25 - previousMa25) / previousMa25 * 100m),
-            Ma75Slope = previousMa75 <= 0 ? 0 : (float)((ma75 - previousMa75) / previousMa75 * 100m)
-        };
     }
 }
