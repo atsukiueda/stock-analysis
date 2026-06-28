@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using StockAnalysis.Batch.Backtest.Analysis;
-using StockAnalysis.Batch.Backtest.Analysis;
 using System.Text;
 
 namespace StockAnalysis.Batch.Backtest.Report;

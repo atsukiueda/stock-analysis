@@ -58,8 +58,7 @@ public class MlTrainingDataCacheService
         var csv = new StringBuilder();
 
         csv.AppendLine(
-            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,Ma75Slope,TopixMomentum25,Sp500Momentum25,NasdaqMomentum25,UsdJpyMomentum25,VixMomentum25,FutureReturn5,Up5");
-
+            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,TopixMomentum25,UsdJpyMomentum25,VixMomentum25,FutureMinReturn10");
         foreach (var row in rows)
         {
             var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
@@ -94,14 +93,10 @@ public class MlTrainingDataCacheService
                     FormatFloat(technicalFeatures.VolumeRatio5),
                     FormatFloat(technicalFeatures.ClosePositionInRange25),
                     FormatFloat(technicalFeatures.Ma25Slope),
-                    FormatFloat(technicalFeatures.Ma75Slope),
                     FormatFloat(marketFeatures.TopixMomentum25),
-                    FormatFloat(marketFeatures.Sp500Momentum25),
-                    FormatFloat(marketFeatures.NasdaqMomentum25),
                     FormatFloat(marketFeatures.UsdJpyMomentum25),
                     FormatFloat(marketFeatures.VixMomentum25),
-                    FormatDecimal(row.FutureReturn5),
-                    row.Up5 ? "true" : "false"));
+                    FormatDecimal(row.FutureMinReturn10)));
         }
 
         await File.WriteAllTextAsync(
@@ -140,7 +135,7 @@ public class MlTrainingDataCacheService
         var csv = new StringBuilder();
 
         csv.AppendLine(
-            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,Ma75Slope,TopixMomentum25,Sp500Momentum25,NasdaqMomentum25,UsdJpyMomentum25,VixMomentum25,FutureReturn10,Up10");
+            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,TopixMomentum25,UsdJpyMomentum25,VixMomentum25,FutureMinReturn10");
 
         var outputCount = 0;
 
@@ -280,6 +275,92 @@ public class MlTrainingDataCacheService
             Encoding.UTF8);
 
         Console.WriteLine($"TakeProfit学習データCSVを出力しました: {filePath}");
+        Console.WriteLine($"取得件数: {rows.Count}");
+        Console.WriteLine($"出力件数: {outputCount}");
+    }
+
+    /// <summary>
+    /// StopLoss回帰モデル学習用データをCSVへ出力する。
+    /// ML最終入力に必要な特徴量を計算済みの状態で保存し、
+    /// StopLoss学習・特徴量重要度分析時のDBアクセスを削減する。
+    /// </summary>
+    public async Task ExportStopLossTrainingDataAsync()
+    {
+        var outputDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "MlCache");
+
+        Directory.CreateDirectory(outputDirectory);
+
+        var filePath = Path.Combine(
+            outputDirectory,
+            "stoploss_training_data.csv");
+
+        var rows = await _db.MlTrainingData
+            .AsNoTracking()
+            .Where(x => x.FutureMinReturn10 != null)
+            .OrderBy(x => x.TradeDate)
+            .ThenBy(x => x.Code)
+            .ToListAsync();
+
+        var csv = new StringBuilder();
+
+        csv.AppendLine(
+            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,TopixMomentum25,UsdJpyMomentum25,VixMomentum25,FutureMinReturn10");
+
+        var outputCount = 0;
+
+        foreach (var row in rows)
+        {
+            // テクニカル特徴量を共通サービスから取得する。
+            var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
+                row.Code,
+                row.TradeDate);
+
+            if (technicalFeatures == null)
+            {
+                continue;
+            }
+
+            // 市場特徴量を共通サービスから取得する。
+            // StopLossはまず既存モデルと同じ特徴量セットでCSV化し、後続のFeature Importanceで削除対象を判断する。
+            var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
+                row.TradeDate);
+
+            csv.AppendLine(
+            string.Join(
+                ",",
+                row.TradeDate.ToString("yyyy-MM-dd"),
+                row.Code,
+                FormatDecimal(row.FinancialScore),
+                FormatDecimal(row.GrowthScore),
+                FormatDecimal(row.DividendScore),
+                FormatDecimal(row.RoeScore),
+                FormatDecimal(row.PerScore),
+                FormatDecimal(row.PbrScore),
+                FormatDecimal(row.TechnicalScore),
+                FormatDecimal(row.SwingScore),
+                FormatDecimal(row.MarketScore),
+                FormatFloat(technicalFeatures.Momentum5),
+                FormatFloat(technicalFeatures.Momentum25),
+                FormatFloat(technicalFeatures.DeviationFromMa25),
+                FormatFloat(technicalFeatures.VolumeRatio5),
+                FormatFloat(technicalFeatures.ClosePositionInRange25),
+                FormatFloat(technicalFeatures.Ma25Slope),
+                FormatFloat(marketFeatures.TopixMomentum25),
+                FormatFloat(marketFeatures.UsdJpyMomentum25),
+                FormatFloat(marketFeatures.VixMomentum25),
+                FormatDecimal(row.FutureMinReturn10)));
+
+            outputCount++;
+        }
+
+        await File.WriteAllTextAsync(
+            filePath,
+            csv.ToString(),
+            Encoding.UTF8);
+
+        Console.WriteLine($"StopLoss学習データCSVを出力しました: {filePath}");
         Console.WriteLine($"取得件数: {rows.Count}");
         Console.WriteLine($"出力件数: {outputCount}");
     }

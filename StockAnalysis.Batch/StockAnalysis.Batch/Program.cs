@@ -30,17 +30,19 @@ const bool RUN_SWING_ADVICE = false;
 const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP10_TRAINING = false;
-const bool RUN_SCREENING = true;
-const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
-const bool RUN_ML_STOP_LOSS_TRAINING = false;
+const bool RUN_SCREENING = false;
+const bool RUN_ML_TAKE_PROFIT_TRAINING = true;
+const bool RUN_ML_STOP_LOSS_TRAINING = true;
 const bool RUN_BACKTEST = false;
-const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
+const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = true;
 const bool RUN_UP5_FEATURE_IMPORTANCE_WF = false;
 const bool RUN_ML_UP5_TRAINING = false;
 const bool RUN_WALK_FORWARD_UP5 = false;
 const bool RUN_EXPORT_UP5_ML_CACHE = false;
 const bool RUN_EXPORT_UP10_TRAINING_CACHE = false;
 const bool RUN_EXPORT_TAKEPROFIT_TRAINING_CACHE = false;
+const bool RUN_EXPORT_STOPLOSS_TRAINING_CACHE = false;
+const bool RUN_STOPLOSS_FEATURE_IMPORTANCE = true;
 
 
 // ==============================
@@ -1321,14 +1323,16 @@ if (RUN_EXPORT_TAKEPROFIT_TRAINING_CACHE)
     return;
 }
 
-if (RUN_EXPORT_TAKEPROFIT_TRAINING_CACHE)
+if (RUN_EXPORT_STOPLOSS_TRAINING_CACHE)
 {
     Console.WriteLine();
-    Console.WriteLine("=== TakeProfit 学習CSVキャッシュ出力開始 ===");
+    Console.WriteLine("=== StopLoss 学習CSVキャッシュ出力開始 ===");
 
-    await trainingDataCacheService.ExportTakeProfitTrainingDataAsync();
+    await trainingDataCacheService.ExportStopLossTrainingDataAsync();
 
-    Console.WriteLine("=== TakeProfit 学習CSVキャッシュ出力終了 ===");
+    Console.WriteLine("=== StopLoss 学習CSVキャッシュ出力終了 ===");
+
+    return;
 }
 
 // ==============================
@@ -1406,6 +1410,21 @@ if (RUN_TAKEPROFIT_FEATURE_IMPORTANCE)
 
     Console.WriteLine();
     Console.WriteLine("=== TP特徴量重要度分析終了 ===");
+
+    return;
+}
+
+if (RUN_STOPLOSS_FEATURE_IMPORTANCE)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== SL特徴量重要度分析開始 ===");
+
+    var stopLossService = new MlStopLossPredictionService(db);
+
+    await stopLossService.AnalyzeFeatureImportanceAsync();
+
+    Console.WriteLine();
+    Console.WriteLine("=== SL特徴量重要度分析終了 ===");
 
     return;
 }

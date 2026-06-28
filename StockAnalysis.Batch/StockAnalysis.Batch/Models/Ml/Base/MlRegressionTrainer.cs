@@ -1,5 +1,6 @@
 ﻿using Microsoft.ML;
 using StockAnalysis.Batch.Models;
+using System.Linq.Expressions;
 
 namespace StockAnalysis.Batch.Services.Ml.Base;
 
@@ -31,12 +32,14 @@ public class MlRegressionTrainer
     /// FastTree回帰モデルを学習し、評価用予測結果を返す。
     /// 時系列データのためランダム分割せず、末尾20%を検証データとして使う。
     /// </summary>
+    /// <typeparam name="TInput">回帰モデルの入力データ型。</typeparam>
     /// <param name="inputs">学習対象データ。</param>
     /// <param name="featureColumns">学習に使用する特徴量列名。</param>
     /// <returns>学習結果。</returns>
-    public MlRegressionTrainingResult TrainFastTree(
-        List<MlTakeProfitInput> inputs,
+    public MlRegressionTrainingResult TrainFastTree<TInput>(
+        List<TInput> inputs,
         string[] featureColumns)
+        where TInput : class, IMlRegressionInput
     {
         // 時系列データなので、ランダムシャッフルせず日付順で並べる。
         var orderedInputs = inputs

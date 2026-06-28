@@ -13,8 +13,6 @@ public class MlFeatureCalculationService
 {
     private readonly StockAnalysisDbContext _db;
 
-    private readonly MlFeatureCalculationService _featureCalculationService;
-
     private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
 
     private readonly Dictionary<string, List<MarketIndexDaily>> _marketIndexHistoryCache = new();
@@ -49,7 +47,7 @@ public class MlFeatureCalculationService
             .Where(x => x.TradeDate <= tradeDate)
             .Where(x => x.ClosePrice != null)
             .OrderByDescending(x => x.TradeDate)
-            .Take(75)
+            .Take(80)
             .OrderBy(x => x.TradeDate)
             .ToListAsync();
 
@@ -120,8 +118,8 @@ public class MlFeatureCalculationService
 
         var closePositionInRange25 =
             high25 > low25
-                ? (close - low25) / (high25 - low25) * 100m
-                : 50m;
+                ? (close - low25) / (high25 - low25)
+                : 0.5m;
 
         var ma25Slope = CalculateMaSlope(
             prices,
@@ -154,10 +152,10 @@ public class MlFeatureCalculationService
         return new MlMarketFeatures
         {
             TopixMomentum25 = await CalculateMarketMomentum25Async("TOPIX", tradeDate),
-            Sp500Momentum25 = await CalculateMarketMomentum25Async("S&P500", tradeDate),
-            NasdaqMomentum25 = await CalculateMarketMomentum25Async("NASDAQ100 / QQQ", tradeDate),
-            UsdJpyMomentum25 = await CalculateMarketMomentum25Async("USD/JPY", tradeDate),
-            VixMomentum25 = await CalculateMarketMomentum25Async("CBOE Volatility Index", tradeDate)
+            Sp500Momentum25 = await CalculateMarketMomentum25Async("SP500", tradeDate),
+            NasdaqMomentum25 = await CalculateMarketMomentum25Async("NASDAQ", tradeDate),
+            UsdJpyMomentum25 = await CalculateMarketMomentum25Async("USDJPY", tradeDate),
+            VixMomentum25 = await CalculateMarketMomentum25Async("VIX", tradeDate)
         };
     }
 

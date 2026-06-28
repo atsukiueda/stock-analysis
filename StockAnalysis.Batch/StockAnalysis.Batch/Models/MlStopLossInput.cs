@@ -2,7 +2,7 @@
 
 namespace StockAnalysis.Batch.Models;
 
-public class MlStopLossInput
+public class MlStopLossInput : IMlRegressionInput
 {
     public DateTime TradeDate { get; set; }
 

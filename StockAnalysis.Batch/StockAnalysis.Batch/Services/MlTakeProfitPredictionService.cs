@@ -4,6 +4,7 @@ using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
 using System.Globalization;
 using StockAnalysis.Batch.Services.Ml.Base;
+using StockAnalysis.Batch.Models.Ml;
 
 namespace StockAnalysis.Batch.Services;
 
@@ -13,13 +14,9 @@ public class MlTakeProfitPredictionService
 
     private readonly MLContext _mlContext;
 
-    private readonly Dictionary<DateTime, MarketFeatureValues> _marketFeatureCache = new();
-
     private readonly Dictionary<string, TechnicalFeatureValues?> _technicalFeatureCache = new();
 
     private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
-
-    private readonly Dictionary<string, List<MarketIndexDaily>> _marketIndexHistoryCache = new();
 
     private readonly MlRegressionPipelineFactory _regressionPipelineFactory;
 
@@ -31,23 +28,49 @@ public class MlTakeProfitPredictionService
 
     private readonly MlPredictionEngineStore<MlTakeProfitInput, MlTakeProfitOutput> _predictionEngineStore;
 
+    private readonly MlFeatureCalculationService _featureCalculationService;
+
+    /// <summary>
+    /// CSVキャッシュからTakeProfit学習用入力データを作成する。
+    /// 学習時のAzure SQLアクセスと特徴量再計算を避けるために使用する。
+    /// </summary>
+    /// <returns>TakeProfit学習用入力データ。</returns>
+    private Task<List<MlTakeProfitInput>> CreateTrainingInputsAsync()
+    {
+        // CSVキャッシュから学習データを読み込み、時系列順に並べる。
+        var inputs = LoadTrainingDataFromCsv()
+            .OrderBy(x => x.TradeDate)
+            .ToList();
+
+        return Task.FromResult(inputs);
+    }
+
     public MlTakeProfitPredictionService(StockAnalysisDbContext db)
     {
         _db = db;
         _mlContext = new MLContext(seed: 1);
+
+        _featureCalculationService = new MlFeatureCalculationService(_db);
+
         _regressionEvaluator = new MlRegressionEvaluator(_mlContext);
         _regressionPipelineFactory = new MlRegressionPipelineFactory(_mlContext);
+
         _regressionTrainer = new MlRegressionTrainer(
             _mlContext,
             _regressionPipelineFactory);
+
         _modelStore = new MlModelStore(_mlContext);
 
         _predictionEngineStore =
             new MlPredictionEngineStore<MlTakeProfitInput, MlTakeProfitOutput>(
-            _mlContext,
-            _modelStore);
+                _mlContext,
+                _modelStore);
     }
 
+    /// <summary>
+    /// TakeProfit回帰モデルを学習し、評価結果と最新ランキングを出力する。
+    /// 学習処理・評価処理・モデル保存はRegression共通基盤へ委譲する。
+    /// </summary>
     public async Task TrainAndEvaluateAsync()
     {
         var inputs = await CreateTrainingInputsAsync();
@@ -72,6 +95,7 @@ public class MlTakeProfitPredictionService
         var trainSet = trainingResult.TrainSet;
         var predictions = trainingResult.Predictions;
 
+        // 回帰モデル共通Evaluatorで評価指標を出力する。
         _regressionEvaluator.Evaluate(
             modelTitle: "TakeProfit",
             predictions: predictions);
@@ -88,18 +112,89 @@ public class MlTakeProfitPredictionService
     }
 
     /// <summary>
-    /// CSVキャッシュからTakeProfit学習用入力データを作成する。
-    /// 学習時のAzure SQLアクセスと特徴量再計算を避けるために使用する。
+    /// TakeProfit回帰モデルの特徴量重要度を分析する。
+    /// CSVキャッシュから学習データを読み込み、Permutation Feature Importanceを実行する。
     /// </summary>
-    /// <returns>TakeProfit学習用入力データ。</returns>
-    private Task<List<MlTakeProfitInput>> CreateTrainingInputsAsync()
+    public async Task AnalyzeFeatureImportanceAsync()
     {
-        // CSVキャッシュから学習データを読み込み、時系列順に並べる。
-        var inputs = LoadTrainingDataFromCsv()
+        var inputs = await CreateTrainingInputsAsync();
+
+        if (inputs.Count < 100)
+        {
+            Console.WriteLine($"特徴量重要度分析に必要なデータが少なすぎます。件数: {inputs.Count}");
+            return;
+        }
+
+        var orderedInputs = inputs
             .OrderBy(x => x.TradeDate)
             .ToList();
 
-        return Task.FromResult(inputs);
+        var trainCount = (int)(orderedInputs.Count * 0.8);
+
+        var trainInputs = orderedInputs
+            .Take(trainCount)
+            .ToList();
+
+        var testInputs = orderedInputs
+            .Skip(trainCount)
+            .ToList();
+
+        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
+        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
+
+        var basePipeline = CreateBasePipeline();
+
+        var featureTransformer = basePipeline.Fit(trainSet);
+
+        var transformedTrainSet = featureTransformer.Transform(trainSet);
+        var transformedTestSet = featureTransformer.Transform(testSet);
+
+        var trainer = _mlContext.Regression.Trainers.FastTree(
+            labelColumnName: "Label",
+            featureColumnName: "Features",
+            numberOfLeaves: 16,
+            numberOfTrees: 200,
+            minimumExampleCountPerLeaf: 10);
+
+        var model = trainer.Fit(transformedTrainSet);
+
+        var predictions = model.Transform(transformedTestSet);
+
+        _regressionEvaluator.Evaluate(
+            modelTitle: "TakeProfit",
+            predictions: predictions);
+
+        var permutationMetrics =
+            _mlContext.Regression.PermutationFeatureImportance(
+                model,
+                transformedTestSet,
+                labelColumnName: "Label",
+                permutationCount: 5);
+
+        var featureNames = GetFeatureColumns();
+
+        Console.WriteLine();
+        Console.WriteLine("=== TakeProfit 特徴量重要度 ===");
+
+        var ranking = permutationMetrics
+            .Select((item, index) => new
+            {
+                FeatureName = featureNames[index],
+                RSquaredDrop = item.RSquared.Mean,
+                RmseIncrease = item.RootMeanSquaredError.Mean,
+                MaeIncrease = item.MeanAbsoluteError.Mean
+            })
+            .OrderByDescending(x => Math.Abs(x.RSquaredDrop))
+            .ToList();
+
+        foreach (var item in ranking)
+        {
+            Console.WriteLine(
+                $"{item.FeatureName,-30} " +
+                $"RSquaredDrop:{item.RSquaredDrop:F6} " +
+                $"RMSE:{item.RmseIncrease:F6} " +
+                $"MAE:{item.MaeIncrease:F6}");
+        }
     }
 
     /// <summary>
@@ -292,8 +387,10 @@ public class MlTakeProfitPredictionService
                 continue;
             }
 
-            var marketFeatures = await CalculateMarketFeaturesAsync(
-                row.Score.ScoreDate);
+            // 市場特徴量は共通特徴量計算サービスから取得する。
+            var marketFeatures =
+                await _featureCalculationService.GetMarketFeaturesAsync(
+                    row.Score.ScoreDate);
 
             var input = new MlTakeProfitInput
             {
@@ -363,19 +460,6 @@ public class MlTakeProfitPredictionService
         public float Ma25Slope { get; set; }
 
         public float Ma75Slope { get; set; }
-    }
-
-    private class MarketFeatureValues
-    {
-        public float TopixMomentum25 { get; set; }
-
-        public float Sp500Momentum25 { get; set; }
-
-        public float NasdaqMomentum25 { get; set; }
-
-        public float UsdJpyMomentum25 { get; set; }
-
-        public float VixMomentum25 { get; set; }
     }
 
     private async Task<TechnicalFeatureValues?> CalculateTechnicalFeaturesAsync(
@@ -485,61 +569,6 @@ public class MlTakeProfitPredictionService
         return technicalFeatures;
     }
 
-    private async Task<MarketFeatureValues> CalculateMarketFeaturesAsync(
-        DateTime tradeDate)
-    {
-        return new MarketFeatureValues
-        {
-            TopixMomentum25 = await CalculateMarketMomentum25Async("TOPIX", tradeDate),
-            Sp500Momentum25 = await CalculateMarketMomentum25Async("SP500", tradeDate),
-            NasdaqMomentum25 = await CalculateMarketMomentum25Async("NASDAQ", tradeDate),
-            UsdJpyMomentum25 = await CalculateMarketMomentum25Async("USDJPY", tradeDate),
-            VixMomentum25 = await CalculateMarketMomentum25Async("VIX", tradeDate)
-        };
-    }
-
-    private async Task<MarketFeatureValues> GetMarketFeaturesWithCacheAsync(
-    DateTime tradeDate)
-    {
-        if (_marketFeatureCache.TryGetValue(tradeDate, out var cached))
-        {
-            return cached;
-        }
-
-        var marketFeatures = await CalculateMarketFeaturesAsync(tradeDate);
-
-        _marketFeatureCache[tradeDate] = marketFeatures;
-
-        return marketFeatures;
-    }
-
-    private async Task<float> CalculateMarketMomentum25Async(
-    string indexName,
-    DateTime tradeDate)
-    {
-        var allPrices = await GetMarketIndexHistoryWithCacheAsync(indexName);
-
-        var prices = allPrices
-            .Where(x => x.TradeDate <= tradeDate)
-            .TakeLast(25)
-            .ToList();
-
-        if (prices.Count < 25)
-        {
-            return 0;
-        }
-
-        var first = prices[0].CloseValue;
-        var latest = prices[^1].CloseValue;
-
-        if (first == null || first <= 0 || latest == null)
-        {
-            return 0;
-        }
-
-        return (float)((latest.Value - first.Value) / first.Value * 100m);
-    }
-
     /// <summary>
     /// TakeProfitモデルを読み込む。
     /// 実際の読込・キャッシュ処理は共通ModelStoreへ委譲する。
@@ -571,7 +600,9 @@ public class MlTakeProfitPredictionService
 
         var priceHistoryMap = await GetPriceHistoryMapAsync(targetCodes);
 
-        var marketFeatures = await GetMarketFeaturesWithCacheAsync(latestScoreDate);
+        // 市場特徴量は共通特徴量計算サービスから取得する。
+        var marketFeatures =
+            await _featureCalculationService.GetMarketFeaturesAsync(latestScoreDate);
 
         var inputs = new List<MlTakeProfitInput>();
         var codeList = new List<string>();
@@ -645,17 +676,11 @@ public class MlTakeProfitPredictionService
     }
 
     /// <summary>
-    /// TakeProfitモデルを読み込む。
-    /// 実際の読込・キャッシュ処理は共通ModelStoreへ委譲する。
+    /// 指定スコア行に対してTakeProfit予測値を算出する。
+    /// 特徴量計算はMlFeatureCalculationServiceへ委譲する。
     /// </summary>
-    /// <returns>読み込み済みTakeProfitモデル。</returns>
-    private ITransformer GetOrLoadModel()
-    {
-        return _modelStore.GetOrLoadModel(
-            modelName: "takeprofit-model",
-            modelTitle: "TakeProfit");
-    }
-
+    /// <param name="score">予測対象のスコア行。</param>
+    /// <returns>予測TakeProfit。特徴量不足時はnull。</returns>
     public async Task<decimal?> PredictAsync(StockScoreDaily score)
     {
         // 共通PredictionEngineStoreからTakeProfit用PredictionEngineを取得する。
@@ -663,16 +688,20 @@ public class MlTakeProfitPredictionService
             modelName: "takeprofit-model",
             modelTitle: "TakeProfit");
 
-        var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
-            score.Code,
-            score.ScoreDate);
+        // テクニカル特徴量は共通特徴量計算サービスから取得する。
+        var technicalFeatures =
+            await _featureCalculationService.GetTechnicalFeaturesAsync(
+                score.Code,
+                score.ScoreDate);
 
         if (technicalFeatures == null)
         {
             return null;
         }
 
-        var marketFeatures = await GetMarketFeaturesWithCacheAsync(score.ScoreDate);
+        // 市場特徴量は共通特徴量計算サービスから取得する。
+        var marketFeatures =
+            await _featureCalculationService.GetMarketFeaturesAsync(score.ScoreDate);
 
         var input = new MlTakeProfitInput
         {
@@ -722,25 +751,6 @@ public class MlTakeProfitPredictionService
         return prices;
     }
 
-    private async Task<List<MarketIndexDaily>> GetMarketIndexHistoryWithCacheAsync(
-    string indexName)
-    {
-        if (_marketIndexHistoryCache.TryGetValue(indexName, out var cached))
-        {
-            return cached;
-        }
-
-        var prices = await _db.MarketIndicesDaily
-            .Where(x => x.IndexName == indexName)
-            .Where(x => x.CloseValue != null)
-            .OrderBy(x => x.TradeDate)
-            .ToListAsync();
-
-        _marketIndexHistoryCache[indexName] = prices;
-
-        return prices;
-    }
-
     private async Task<Dictionary<string, List<PriceDaily>>> GetPriceHistoryMapAsync(
     IReadOnlyCollection<string> codes)
     {
@@ -762,88 +772,6 @@ public class MlTakeProfitPredictionService
             .ToDictionary(
                 g => g.Key,
                 g => g.ToList());
-    }
-
-    public async Task AnalyzeFeatureImportanceAsync()
-    {
-        var inputs = await CreateTrainingInputsAsync();
-
-        if (inputs.Count < 100)
-        {
-            Console.WriteLine($"特徴量重要度分析に必要なデータが少なすぎます。件数: {inputs.Count}");
-            return;
-        }
-
-        var orderedInputs = inputs
-            .OrderBy(x => x.TradeDate)
-            .ToList();
-
-        var trainCount = (int)(orderedInputs.Count * 0.8);
-
-        var trainInputs = orderedInputs
-            .Take(trainCount)
-            .ToList();
-
-        var testInputs = orderedInputs
-            .Skip(trainCount)
-            .ToList();
-
-        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
-
-        var basePipeline = CreateBasePipeline();
-
-        var featureTransformer = basePipeline.Fit(trainSet);
-
-        var transformedTrainSet = featureTransformer.Transform(trainSet);
-        var transformedTestSet = featureTransformer.Transform(testSet);
-
-        var trainer = _mlContext.Regression.Trainers.FastTree(
-            labelColumnName: "Label",
-            featureColumnName: "Features",
-            numberOfLeaves: 16,
-            numberOfTrees: 200,
-            minimumExampleCountPerLeaf: 10);
-
-        var model = trainer.Fit(transformedTrainSet);
-
-        var predictions = model.Transform(transformedTestSet);
-
-        _regressionEvaluator.Evaluate(
-            modelTitle: "TakeProfit",
-            predictions: predictions);
-
-        var permutationMetrics =
-            _mlContext.Regression.PermutationFeatureImportance(
-                model,
-                transformedTestSet,
-                labelColumnName: "Label",
-                permutationCount: 5);
-
-        var featureNames = GetFeatureColumns();
-
-        Console.WriteLine();
-        Console.WriteLine("=== TakeProfit 特徴量重要度 ===");
-
-        var ranking = permutationMetrics
-            .Select((item, index) => new
-            {
-                FeatureName = featureNames[index],
-                RSquaredDrop = item.RSquared.Mean,
-                RmseIncrease = item.RootMeanSquaredError.Mean,
-                MaeIncrease = item.MeanAbsoluteError.Mean
-            })
-            .OrderByDescending(x => Math.Abs(x.RSquaredDrop))
-            .ToList();
-
-        foreach (var item in ranking)
-        {
-            Console.WriteLine(
-                $"{item.FeatureName,-30} " +
-                $"RSquaredDrop:{item.RSquaredDrop:F6} " +
-                $"RMSE:{item.RmseIncrease:F6} " +
-                $"MAE:{item.MaeIncrease:F6}");
-        }
     }
 
     private TechnicalFeatureValues? CalculateTechnicalFeaturesFromPrices(
