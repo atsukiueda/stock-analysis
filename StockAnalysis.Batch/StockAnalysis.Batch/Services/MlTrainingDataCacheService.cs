@@ -229,7 +229,7 @@ public class MlTrainingDataCacheService
         var csv = new StringBuilder();
 
         csv.AppendLine(
-            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,Ma75Slope,TopixMomentum25,FutureMaxReturn10");
+            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,Momentum5,Momentum25,DeviationFromMa25,ClosePositionInRange25,Ma25Slope,TopixMomentum25,FutureMaxReturn10");
 
         var outputCount = 0;
 
@@ -263,14 +263,11 @@ public class MlTrainingDataCacheService
                     FormatDecimal(row.PbrScore),
                     FormatDecimal(row.TechnicalScore),
                     FormatDecimal(row.SwingScore),
-                    FormatDecimal(row.MarketScore),
                     FormatFloat(technicalFeatures.Momentum5),
                     FormatFloat(technicalFeatures.Momentum25),
                     FormatFloat(technicalFeatures.DeviationFromMa25),
-                    FormatFloat(technicalFeatures.VolumeRatio5),
                     FormatFloat(technicalFeatures.ClosePositionInRange25),
                     FormatFloat(technicalFeatures.Ma25Slope),
-                    FormatFloat(technicalFeatures.Ma75Slope),
                     FormatFloat(marketFeatures.TopixMomentum25),
                     FormatDecimal(row.FutureMaxReturn10)));
 

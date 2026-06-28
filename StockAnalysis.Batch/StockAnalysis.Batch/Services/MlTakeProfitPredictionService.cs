@@ -151,7 +151,7 @@ public class MlTakeProfitPredictionService
             var c = line.Split(',');
 
             // CSV列数が想定と異なる場合は、キャッシュ生成ミスとして明示的に停止する。
-            if (c.Length < 20)
+            if (c.Length < 17)
             {
                 throw new InvalidOperationException(
                     $"TakeProfit学習用CSVの列数が不足しています。Columns:{c.Length}, Line:{line}");
@@ -171,19 +171,15 @@ public class MlTakeProfitPredictionService
                 PbrScore = ParseFloat(c[7]),
                 TechnicalScore = ParseFloat(c[8]),
                 SwingScore = ParseFloat(c[9]),
-                MarketScore = ParseFloat(c[10]),
+                Momentum5 = ParseFloat(c[10]),
+                Momentum25 = ParseFloat(c[11]),
+                DeviationFromMa25 = ParseFloat(c[12]),
+                ClosePositionInRange25 = ParseFloat(c[13]),
+                Ma25Slope = ParseFloat(c[14]),
 
-                Momentum5 = ParseFloat(c[11]),
-                Momentum25 = ParseFloat(c[12]),
-                DeviationFromMa25 = ParseFloat(c[13]),
-                VolumeRatio5 = ParseFloat(c[14]),
-                ClosePositionInRange25 = ParseFloat(c[15]),
-                Ma25Slope = ParseFloat(c[16]),
-                Ma75Slope = ParseFloat(c[17]),
+                TopixMomentum25 = ParseFloat(c[15]),
 
-                TopixMomentum25 = ParseFloat(c[18]),
-
-                FutureMaxReturn10 = ParseFloat(c[19])
+                FutureMaxReturn10 = ParseFloat(c[16])
             });
         }
 
@@ -214,7 +210,6 @@ public class MlTakeProfitPredictionService
                 "Features",
 
                 // 財務・成長・配当などのスコア系特徴量。
-                // これは既存スクリーニング評価をTPモデルにも反映するために残す。
                 nameof(MlTakeProfitInput.FinancialScore),
                 nameof(MlTakeProfitInput.GrowthScore),
                 nameof(MlTakeProfitInput.DividendScore),
@@ -223,26 +218,18 @@ public class MlTakeProfitPredictionService
                 nameof(MlTakeProfitInput.PbrScore),
                 nameof(MlTakeProfitInput.TechnicalScore),
                 nameof(MlTakeProfitInput.SwingScore),
-                nameof(MlTakeProfitInput.MarketScore),
 
-                // 銘柄自身の値動き・出来高・移動平均系特徴量。
-                // 前回のFeature ImportanceでMomentum25が最重要だったため、
-                // このブロックは今回のTPモデル改善で特に重要。
+                // 銘柄自身の値動き・移動平均系特徴量。
                 nameof(MlTakeProfitInput.Momentum5),
                 nameof(MlTakeProfitInput.Momentum25),
                 nameof(MlTakeProfitInput.DeviationFromMa25),
-                nameof(MlTakeProfitInput.VolumeRatio5),
                 nameof(MlTakeProfitInput.ClosePositionInRange25),
                 nameof(MlTakeProfitInput.Ma25Slope),
-                nameof(MlTakeProfitInput.Ma75Slope),
 
                 // 日本株市場全体の地合い。
-                // 米国指数・為替・VIX系は重要度がほぼゼロだったため削除するが、
-                // TOPIXだけは日本株全体の説明変数として一旦残す。
                 nameof(MlTakeProfitInput.TopixMomentum25))
 
             // 特徴量ごとのスケール差をならす。
-            // スコア系と騰落率系が混在するため、MinMax正規化を維持する。
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
     }
 
@@ -865,18 +852,13 @@ public class MlTakeProfitPredictionService
             nameof(MlTakeProfitInput.PbrScore),
             nameof(MlTakeProfitInput.TechnicalScore),
             nameof(MlTakeProfitInput.SwingScore),
-            nameof(MlTakeProfitInput.MarketScore),
         
             nameof(MlTakeProfitInput.Momentum5),
             nameof(MlTakeProfitInput.Momentum25),
             nameof(MlTakeProfitInput.DeviationFromMa25),
-            nameof(MlTakeProfitInput.VolumeRatio5),
             nameof(MlTakeProfitInput.ClosePositionInRange25),
             nameof(MlTakeProfitInput.Ma25Slope),
-            nameof(MlTakeProfitInput.Ma75Slope),
         
-            // 日本株市場全体の地合い。
-            // 今回は比較のため残す。
             nameof(MlTakeProfitInput.TopixMomentum25)
         };
 
