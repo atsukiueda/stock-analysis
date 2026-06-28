@@ -203,6 +203,91 @@ public class MlTrainingDataCacheService
     }
 
     /// <summary>
+    /// TakeProfit回帰モデル学習用データをCSVへ出力する。
+    /// ML最終入力に必要な特徴量を計算済みの状態で保存し、
+    /// TakeProfit学習・特徴量重要度分析時のDBアクセスを削減する。
+    /// </summary>
+    public async Task ExportTakeProfitTrainingDataAsync()
+    {
+        var outputDirectory = Path.Combine(
+            AppContext.BaseDirectory,
+            "MlCache");
+
+        Directory.CreateDirectory(outputDirectory);
+
+        var filePath = Path.Combine(
+            outputDirectory,
+            "takeprofit_training_data.csv");
+
+        var rows = await _db.MlTrainingData
+            .AsNoTracking()
+            .Where(x => x.FutureMaxReturn10 != null)
+            .OrderBy(x => x.TradeDate)
+            .ThenBy(x => x.Code)
+            .ToListAsync();
+
+        var csv = new StringBuilder();
+
+        csv.AppendLine(
+            "TradeDate,Code,FinancialScore,GrowthScore,DividendScore,RoeScore,PerScore,PbrScore,TechnicalScore,SwingScore,MarketScore,Momentum5,Momentum25,DeviationFromMa25,VolumeRatio5,ClosePositionInRange25,Ma25Slope,Ma75Slope,TopixMomentum25,FutureMaxReturn10");
+
+        var outputCount = 0;
+
+        foreach (var row in rows)
+        {
+            // テクニカル特徴量を共通サービスから取得する。
+            var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
+                row.Code,
+                row.TradeDate);
+
+            if (technicalFeatures == null)
+            {
+                continue;
+            }
+
+            // 市場特徴量を共通サービスから取得する。
+            // TakeProfitモデルではFeature Importanceの結果からTOPIXのみを採用する。
+            var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
+                row.TradeDate);
+
+            csv.AppendLine(
+                string.Join(
+                    ",",
+                    row.TradeDate.ToString("yyyy-MM-dd"),
+                    row.Code,
+                    FormatDecimal(row.FinancialScore),
+                    FormatDecimal(row.GrowthScore),
+                    FormatDecimal(row.DividendScore),
+                    FormatDecimal(row.RoeScore),
+                    FormatDecimal(row.PerScore),
+                    FormatDecimal(row.PbrScore),
+                    FormatDecimal(row.TechnicalScore),
+                    FormatDecimal(row.SwingScore),
+                    FormatDecimal(row.MarketScore),
+                    FormatFloat(technicalFeatures.Momentum5),
+                    FormatFloat(technicalFeatures.Momentum25),
+                    FormatFloat(technicalFeatures.DeviationFromMa25),
+                    FormatFloat(technicalFeatures.VolumeRatio5),
+                    FormatFloat(technicalFeatures.ClosePositionInRange25),
+                    FormatFloat(technicalFeatures.Ma25Slope),
+                    FormatFloat(technicalFeatures.Ma75Slope),
+                    FormatFloat(marketFeatures.TopixMomentum25),
+                    FormatDecimal(row.FutureMaxReturn10)));
+
+            outputCount++;
+        }
+
+        await File.WriteAllTextAsync(
+            filePath,
+            csv.ToString(),
+            Encoding.UTF8);
+
+        Console.WriteLine($"TakeProfit学習データCSVを出力しました: {filePath}");
+        Console.WriteLine($"取得件数: {rows.Count}");
+        Console.WriteLine($"出力件数: {outputCount}");
+    }
+
+    /// <summary>
     /// decimal値をCSV用文字列に変換する。
     /// </summary>
     private static string FormatDecimal(decimal value)

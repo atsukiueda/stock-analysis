@@ -2,6 +2,7 @@
 using Microsoft.ML;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
+using System.Globalization;
 
 namespace StockAnalysis.Batch.Services;
 
@@ -101,104 +102,110 @@ public class MlTakeProfitPredictionService
         await ShowLatestPredictionRankingAsync(model);
     }
 
-    private async Task<List<MlTakeProfitInput>> CreateTrainingInputsAsync()
+    /// <summary>
+    /// CSVキャッシュからTakeProfit学習用入力データを作成する。
+    /// 学習時のAzure SQLアクセスと特徴量再計算を避けるために使用する。
+    /// </summary>
+    /// <returns>TakeProfit学習用入力データ。</returns>
+    private Task<List<MlTakeProfitInput>> CreateTrainingInputsAsync()
     {
-        var excludedNameKeywords = new[]
+        // CSVキャッシュから学習データを読み込み、時系列順に並べる。
+        var inputs = LoadTrainingDataFromCsv()
+            .OrderBy(x => x.TradeDate)
+            .ToList();
+
+        return Task.FromResult(inputs);
+    }
+
+    /// <summary>
+    /// CSVキャッシュからTakeProfit学習用データを読み込む。
+    /// 学習・特徴量重要度分析でDBアクセスと特徴量再計算を避けるために使用する。
+    /// </summary>
+    /// <returns>TakeProfit学習用入力データ。</returns>
+    private List<MlTakeProfitInput> LoadTrainingDataFromCsv()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "MlCache",
+            "takeprofit_training_data.csv");
+
+        if (!File.Exists(path))
         {
-        "ＥＴＦ",
-        "ETF",
-        "投信",
-        "上場投信",
-        "インデックスファンド",
-        "ＮＥＸＴ　ＦＵＮＤＳ",
-        "MAXIS",
-        "ｉＦｒｅｅＥＴＦ",
-        "iFreeETF",
-        "グローバルＸ",
-        "REIT",
-        "リート",
-        "ETN",
-        "ＳＰＤＲ",
-        "SPDR",
-        "ゴールド・シェア",
-        "Gold Shares"
-    };
+            throw new FileNotFoundException(
+                $"TakeProfit学習用CSVキャッシュが見つかりません。先にRUN_EXPORT_TAKEPROFIT_TRAINING_CACHE=trueで出力してください: {path}");
+        }
 
-        var trainingSourceRows = await _db.MlTrainingData
-            .Where(x => x.FutureMaxReturn10 != null)
-            .Join(
-                _db.Companies,
-                ml => ml.Code,
-                company => company.Code,
-                (ml, company) => new
-                {
-                    Ml = ml,
-                    Company = company
-                })
-            .Where(x => x.Company.IsActive)
-            .ToListAsync();
+        var lines = File.ReadAllLines(path)
+            .Skip(1);
 
-        var inputs = new List<MlTakeProfitInput>();
+        var list = new List<MlTakeProfitInput>();
 
-        foreach (var row in trainingSourceRows
-                     .Where(x => !excludedNameKeywords.Any(keyword =>
-                         x.Company.CompanyName.Contains(keyword)))
-                     .OrderBy(x => x.Ml.TradeDate))
+        foreach (var line in lines)
         {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-                row.Ml.Code,
-                row.Ml.TradeDate);
-
-            // 価格履歴が不足している銘柄・日付は、
-            // テクニカル特徴量を正しく作れないため学習対象から外す。
-            if (technicalFeatures == null)
+            // 空行は学習データとして扱わない。
+            if (string.IsNullOrWhiteSpace(line))
             {
                 continue;
             }
 
-            var marketFeatures = await CalculateMarketFeaturesAsync(
-                row.Ml.TradeDate);
+            var c = line.Split(',');
 
-            inputs.Add(new MlTakeProfitInput
+            // CSV列数が想定と異なる場合は、キャッシュ生成ミスとして明示的に停止する。
+            if (c.Length < 20)
             {
-                TradeDate = row.Ml.TradeDate,
+                throw new InvalidOperationException(
+                    $"TakeProfit学習用CSVの列数が不足しています。Columns:{c.Length}, Line:{line}");
+            }
 
-                FinancialScore = row.Ml.FinancialScore,
-                GrowthScore = row.Ml.GrowthScore,
-                DividendScore = row.Ml.DividendScore,
-                RoeScore = row.Ml.RoeScore,
-                PerScore = row.Ml.PerScore,
-                PbrScore = row.Ml.PbrScore,
-                TechnicalScore = row.Ml.TechnicalScore,
-                SwingScore = row.Ml.SwingScore,
-                MarketScore = row.Ml.MarketScore,
+            list.Add(new MlTakeProfitInput
+            {
+                TradeDate = DateTime.Parse(
+                    c[0],
+                    CultureInfo.InvariantCulture),
 
-                Momentum5 = technicalFeatures.Momentum5,
-                Momentum25 = technicalFeatures.Momentum25,
-                DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-                VolumeRatio5 = technicalFeatures.VolumeRatio5,
-                ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-                Ma25Slope = technicalFeatures.Ma25Slope,
-                Ma75Slope = technicalFeatures.Ma75Slope,
+                FinancialScore = ParseFloat(c[2]),
+                GrowthScore = ParseFloat(c[3]),
+                DividendScore = ParseFloat(c[4]),
+                RoeScore = ParseFloat(c[5]),
+                PerScore = ParseFloat(c[6]),
+                PbrScore = ParseFloat(c[7]),
+                TechnicalScore = ParseFloat(c[8]),
+                SwingScore = ParseFloat(c[9]),
+                MarketScore = ParseFloat(c[10]),
 
-                // TakeProfitモデルでは、米国指数・為替・VIX系の重要度がほぼゼロだった。
-                // そのため、まずTPモデルだけから以下を削除する。
-                //
-                // 削除対象：
-                // - Sp500Momentum25
-                // - NasdaqMomentum25
-                // - UsdJpyMomentum25
-                // - VixMomentum25
-                //
-                // TopixMomentum25 は日本株市場そのものの地合いを表すため、
-                // 今回は残して比較する。
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
+                Momentum5 = ParseFloat(c[11]),
+                Momentum25 = ParseFloat(c[12]),
+                DeviationFromMa25 = ParseFloat(c[13]),
+                VolumeRatio5 = ParseFloat(c[14]),
+                ClosePositionInRange25 = ParseFloat(c[15]),
+                Ma25Slope = ParseFloat(c[16]),
+                Ma75Slope = ParseFloat(c[17]),
 
-                FutureMaxReturn10 = (float)row.Ml.FutureMaxReturn10!.Value
+                TopixMomentum25 = ParseFloat(c[18]),
+
+                FutureMaxReturn10 = ParseFloat(c[19])
             });
         }
 
-        return inputs;
+        return list;
+    }
+
+    /// <summary>
+    /// CSV文字列をfloat値へ変換する。
+    /// 空文字は0として扱う。
+    /// </summary>
+    /// <param name="value">CSVから読み込んだ文字列。</param>
+    /// <returns>float値。</returns>
+    private static float ParseFloat(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0f;
+        }
+
+        return float.Parse(
+            value,
+            CultureInfo.InvariantCulture);
     }
 
     private IEstimator<ITransformer> CreateBasePipeline()
