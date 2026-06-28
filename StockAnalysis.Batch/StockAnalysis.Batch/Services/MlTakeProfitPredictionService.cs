@@ -3,15 +3,12 @@ using Microsoft.ML;
 using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
 using System.Globalization;
+using StockAnalysis.Batch.Services.Ml.Base;
 
 namespace StockAnalysis.Batch.Services;
 
 public class MlTakeProfitPredictionService
 {
-    private const string ModelDirectory = "Models";
-
-    private const string ModelPath = "Models/takeprofit-model.zip";
-
     private readonly StockAnalysisDbContext _db;
 
     private readonly MLContext _mlContext;
@@ -24,10 +21,31 @@ public class MlTakeProfitPredictionService
 
     private readonly Dictionary<string, List<MarketIndexDaily>> _marketIndexHistoryCache = new();
 
+    private readonly MlRegressionPipelineFactory _regressionPipelineFactory;
+
+    private readonly MlRegressionEvaluator _regressionEvaluator;
+
+    private readonly MlRegressionTrainer _regressionTrainer;
+
+    private readonly MlModelStore _modelStore;
+
+    private readonly MlPredictionEngineStore<MlTakeProfitInput, MlTakeProfitOutput> _predictionEngineStore;
+
     public MlTakeProfitPredictionService(StockAnalysisDbContext db)
     {
         _db = db;
         _mlContext = new MLContext(seed: 1);
+        _regressionEvaluator = new MlRegressionEvaluator(_mlContext);
+        _regressionPipelineFactory = new MlRegressionPipelineFactory(_mlContext);
+        _regressionTrainer = new MlRegressionTrainer(
+            _mlContext,
+            _regressionPipelineFactory);
+        _modelStore = new MlModelStore(_mlContext);
+
+        _predictionEngineStore =
+            new MlPredictionEngineStore<MlTakeProfitInput, MlTakeProfitOutput>(
+            _mlContext,
+            _modelStore);
     }
 
     public async Task TrainAndEvaluateAsync()
@@ -45,59 +63,26 @@ public class MlTakeProfitPredictionService
         Console.WriteLine($"MaxLabel: {inputs.Max(x => x.FutureMaxReturn10):F2}%");
         Console.WriteLine($"MinLabel: {inputs.Min(x => x.FutureMaxReturn10):F2}%");
 
-        var orderedInputs = inputs
-            .OrderBy(x => x.TradeDate)
-            .ToList();
+        // 共通Trainerで時系列分割・FastTree回帰学習・検証データ予測を行う。
+        var trainingResult = _regressionTrainer.TrainFastTree(
+            inputs,
+            GetFeatureColumns());
 
-        var trainCount = (int)(orderedInputs.Count * 0.8);
+        var model = trainingResult.Model;
+        var trainSet = trainingResult.TrainSet;
+        var predictions = trainingResult.Predictions;
 
-        var trainInputs = orderedInputs
-            .Take(trainCount)
-            .ToList();
+        _regressionEvaluator.Evaluate(
+            modelTitle: "TakeProfit",
+            predictions: predictions);
 
-        var testInputs = orderedInputs
-            .Skip(trainCount)
-            .ToList();
-
-        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
-
-        Console.WriteLine($"TrainCount: {trainInputs.Count}");
-        Console.WriteLine($"TestCount : {testInputs.Count}");
-        Console.WriteLine($"TrainDate : {trainInputs.Min(x => x.TradeDate):yyyy-MM-dd} - {trainInputs.Max(x => x.TradeDate):yyyy-MM-dd}");
-        Console.WriteLine($"TestDate  : {testInputs.Min(x => x.TradeDate):yyyy-MM-dd} - {testInputs.Max(x => x.TradeDate):yyyy-MM-dd}");
-
-        var pipeline = CreateBasePipeline()
-            .Append(_mlContext.Regression.Trainers.FastTree(
-                labelColumnName: "Label",
-                featureColumnName: "Features",
-                numberOfLeaves: 16,
-                numberOfTrees: 200,
-                minimumExampleCountPerLeaf: 10));
-
-        var model = pipeline.Fit(trainSet);
-
-        var predictions = model.Transform(testSet);
-
-        var metrics = _mlContext.Regression.Evaluate(
-            predictions,
-            labelColumnName: "Label",
-            scoreColumnName: "Score");
-
-        Console.WriteLine();
-        Console.WriteLine("=== TakeProfit 回帰モデル 評価結果 ===");
-        Console.WriteLine($"RSquared: {metrics.RSquared:F4}");
-        Console.WriteLine($"RMSE    : {metrics.RootMeanSquaredError:F4}");
-        Console.WriteLine($"MAE     : {metrics.MeanAbsoluteError:F4}");
-
-        Directory.CreateDirectory(ModelDirectory);
-
-        _mlContext.Model.Save(
+        // 学習済みTakeProfitモデルを共通ModelStore経由で保存する。
+        var modelPath = _modelStore.SaveModel(
             model,
             trainSet.Schema,
-            ModelPath);
+            "takeprofit-model");
 
-        Console.WriteLine($"モデル保存: {ModelPath}");
+        Console.WriteLine($"モデル保存: {modelPath}");
 
         await ShowLatestPredictionRankingAsync(model);
     }
@@ -204,33 +189,46 @@ public class MlTakeProfitPredictionService
             CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// TakeProfit回帰モデルで使用する特徴量列名を取得する。
+    /// Feature Importanceの結果から、寄与が弱かったMarketScore、VolumeRatio5、Ma75Slopeは除外している。
+    /// </summary>
+    /// <returns>TakeProfit回帰モデルで使用する特徴量列名。</returns>
+    private static string[] GetFeatureColumns()
+    {
+        return
+        [
+            nameof(MlTakeProfitInput.FinancialScore),
+        nameof(MlTakeProfitInput.GrowthScore),
+        nameof(MlTakeProfitInput.DividendScore),
+        nameof(MlTakeProfitInput.RoeScore),
+        nameof(MlTakeProfitInput.PerScore),
+        nameof(MlTakeProfitInput.PbrScore),
+        nameof(MlTakeProfitInput.TechnicalScore),
+        nameof(MlTakeProfitInput.SwingScore),
+
+        nameof(MlTakeProfitInput.Momentum5),
+        nameof(MlTakeProfitInput.Momentum25),
+        nameof(MlTakeProfitInput.DeviationFromMa25),
+        nameof(MlTakeProfitInput.ClosePositionInRange25),
+        nameof(MlTakeProfitInput.Ma25Slope),
+
+        nameof(MlTakeProfitInput.TopixMomentum25)
+        ];
+    }
+
+    /// <summary>
+    /// TakeProfit回帰モデルで使用する基本パイプラインを作成する。
+    /// 実際の特徴量結合・正規化はMlRegressionPipelineFactoryへ委譲する。
+    /// </summary>
+    /// <returns>特徴量変換パイプライン。</returns>
     private IEstimator<ITransformer> CreateBasePipeline()
     {
-        return _mlContext.Transforms.Concatenate(
-                "Features",
+        // TakeProfitモデル固有の特徴量一覧を取得する。
+        var featureColumns = GetFeatureColumns();
 
-                // 財務・成長・配当などのスコア系特徴量。
-                nameof(MlTakeProfitInput.FinancialScore),
-                nameof(MlTakeProfitInput.GrowthScore),
-                nameof(MlTakeProfitInput.DividendScore),
-                nameof(MlTakeProfitInput.RoeScore),
-                nameof(MlTakeProfitInput.PerScore),
-                nameof(MlTakeProfitInput.PbrScore),
-                nameof(MlTakeProfitInput.TechnicalScore),
-                nameof(MlTakeProfitInput.SwingScore),
-
-                // 銘柄自身の値動き・移動平均系特徴量。
-                nameof(MlTakeProfitInput.Momentum5),
-                nameof(MlTakeProfitInput.Momentum25),
-                nameof(MlTakeProfitInput.DeviationFromMa25),
-                nameof(MlTakeProfitInput.ClosePositionInRange25),
-                nameof(MlTakeProfitInput.Ma25Slope),
-
-                // 日本株市場全体の地合い。
-                nameof(MlTakeProfitInput.TopixMomentum25))
-
-            // 特徴量ごとのスケール差をならす。
-            .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
+        // 回帰パイプライン生成を専用Factoryへ委譲する。
+        return _regressionPipelineFactory.CreateBasePipeline(featureColumns);
     }
 
     private async Task ShowLatestPredictionRankingAsync(ITransformer model)
@@ -542,15 +540,16 @@ public class MlTakeProfitPredictionService
         return (float)((latest.Value - first.Value) / first.Value * 100m);
     }
 
+    /// <summary>
+    /// TakeProfitモデルを読み込む。
+    /// 実際の読込・キャッシュ処理は共通ModelStoreへ委譲する。
+    /// </summary>
+    /// <returns>読み込み済みTakeProfitモデル。</returns>
     private ITransformer LoadModel()
     {
-        if (!File.Exists(ModelPath))
-        {
-            throw new FileNotFoundException(
-                $"TakeProfitモデルが見つかりません。先にRUN_ML_TAKE_PROFIT_TRAINING=trueで学習してください: {ModelPath}");
-        }
-
-        return _mlContext.Model.Load(ModelPath, out _);
+        return _modelStore.GetOrLoadModel(
+            modelName: "takeprofit-model",
+            modelTitle: "TakeProfit");
     }
 
     public async Task<Dictionary<string, decimal>> PredictLatestTakeProfitAsync()
@@ -645,38 +644,24 @@ public class MlTakeProfitPredictionService
         return result;
     }
 
-    private ITransformer? _loadedModel;
-    private PredictionEngine<MlTakeProfitInput, MlTakeProfitOutput>? _predictionEngine;
-
+    /// <summary>
+    /// TakeProfitモデルを読み込む。
+    /// 実際の読込・キャッシュ処理は共通ModelStoreへ委譲する。
+    /// </summary>
+    /// <returns>読み込み済みTakeProfitモデル。</returns>
     private ITransformer GetOrLoadModel()
     {
-        if (_loadedModel != null)
-        {
-            return _loadedModel;
-        }
-
-        var modelPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "Models",
-            "takeprofit-model.zip");
-
-        if (!File.Exists(modelPath))
-        {
-            throw new FileNotFoundException(
-                $"TakeProfitモデルが見つかりません: {modelPath}");
-        }
-
-        _loadedModel = _mlContext.Model.Load(modelPath, out _);
-
-        return _loadedModel;
+        return _modelStore.GetOrLoadModel(
+            modelName: "takeprofit-model",
+            modelTitle: "TakeProfit");
     }
 
     public async Task<decimal?> PredictAsync(StockScoreDaily score)
     {
-        var model = GetOrLoadModel();
-
-        _predictionEngine ??=
-            _mlContext.Model.CreatePredictionEngine<MlTakeProfitInput, MlTakeProfitOutput>(model);
+        // 共通PredictionEngineStoreからTakeProfit用PredictionEngineを取得する。
+        var predictionEngine = _predictionEngineStore.GetOrCreatePredictionEngine(
+            modelName: "takeprofit-model",
+            modelTitle: "TakeProfit");
 
         var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
             score.Code,
@@ -712,7 +697,7 @@ public class MlTakeProfitPredictionService
             TopixMomentum25 = marketFeatures.TopixMomentum25
         };
 
-        var prediction = _predictionEngine.Predict(input);
+        var prediction = predictionEngine.Predict(input);
 
         return Math.Max(
             0m,
@@ -824,16 +809,9 @@ public class MlTakeProfitPredictionService
 
         var predictions = model.Transform(transformedTestSet);
 
-        var metrics = _mlContext.Regression.Evaluate(
-            predictions,
-            labelColumnName: "Label",
-            scoreColumnName: "Score");
-
-        Console.WriteLine();
-        Console.WriteLine("=== TakeProfit 回帰モデル 評価結果 ===");
-        Console.WriteLine($"RSquared: {metrics.RSquared:F4}");
-        Console.WriteLine($"RMSE    : {metrics.RootMeanSquaredError:F4}");
-        Console.WriteLine($"MAE     : {metrics.MeanAbsoluteError:F4}");
+        _regressionEvaluator.Evaluate(
+            modelTitle: "TakeProfit",
+            predictions: predictions);
 
         var permutationMetrics =
             _mlContext.Regression.PermutationFeatureImportance(
@@ -842,25 +820,7 @@ public class MlTakeProfitPredictionService
                 labelColumnName: "Label",
                 permutationCount: 5);
 
-        var featureNames = new[]
-        {
-            nameof(MlTakeProfitInput.FinancialScore),
-            nameof(MlTakeProfitInput.GrowthScore),
-            nameof(MlTakeProfitInput.DividendScore),
-            nameof(MlTakeProfitInput.RoeScore),
-            nameof(MlTakeProfitInput.PerScore),
-            nameof(MlTakeProfitInput.PbrScore),
-            nameof(MlTakeProfitInput.TechnicalScore),
-            nameof(MlTakeProfitInput.SwingScore),
-        
-            nameof(MlTakeProfitInput.Momentum5),
-            nameof(MlTakeProfitInput.Momentum25),
-            nameof(MlTakeProfitInput.DeviationFromMa25),
-            nameof(MlTakeProfitInput.ClosePositionInRange25),
-            nameof(MlTakeProfitInput.Ma25Slope),
-        
-            nameof(MlTakeProfitInput.TopixMomentum25)
-        };
+        var featureNames = GetFeatureColumns();
 
         Console.WriteLine();
         Console.WriteLine("=== TakeProfit 特徴量重要度 ===");
