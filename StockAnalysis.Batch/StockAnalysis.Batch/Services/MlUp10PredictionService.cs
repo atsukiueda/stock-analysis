@@ -4,109 +4,64 @@ using StockAnalysis.Batch.Data;
 using StockAnalysis.Batch.Models;
 using static System.Formats.Asn1.AsnWriter;
 using Microsoft.ML.Trainers.FastTree;
+using System.Globalization;
+using StockAnalysis.Batch.Models.Ml;
+using StockAnalysis.Batch.Services.Ml.Base;
 
 namespace StockAnalysis.Batch.Services;
 
-public class MlUp10PredictionService
+public class MlUp10PredictionService : MlBinaryPredictionServiceBase
 {
     private const string ModelDirectory = "Models";
 
     private const string ModelPath = "Models/up10-model.zip";
 
     private readonly StockAnalysisDbContext _db;
-    private readonly MLContext _mlContext;
 
-    private readonly Dictionary<DateTime, MarketFeatureValues> _marketFeatureCache = new();
+    private readonly MlFeatureCalculationService _featureCalculationService;
 
-    private readonly Dictionary<string, TechnicalFeatureValues?> _technicalFeatureCache = new();
+    private readonly Dictionary<DateTime, StockAnalysis.Batch.Models.Ml.MlMarketFeatures> _marketFeatureCache = new();
+
+    private readonly Dictionary<string, StockAnalysis.Batch.Models.Ml.MlTechnicalFeatures?> _technicalFeatureCache = new();
 
     private readonly Dictionary<string, List<PriceDaily>> _priceHistoryCache = new();
 
     private readonly Dictionary<string, List<MarketIndexDaily>> _marketIndexHistoryCache = new();
 
+    /// <summary>
+    /// コンストラクタ。
+    /// </summary>
+    /// <param name="db">DBコンテキスト。</param>
     public MlUp10PredictionService(StockAnalysisDbContext db)
     {
         _db = db;
-        _mlContext = new MLContext(seed: 1);
+        _featureCalculationService = new MlFeatureCalculationService(db);
     }
 
     public async Task TrainAndEvaluateAsync()
     {
         var excludedNameKeywords = new[]
-        {
-            "ＥＴＦ",
-            "ETF",
-            "投信",
-            "上場投信",
-            "インデックスファンド",
-            "ＮＥＸＴ　ＦＵＮＤＳ",
-            "MAXIS",
-            "ｉＦｒｅｅＥＴＦ",
-            "iFreeETF",
-            "グローバルＸ",
-            "REIT",
-            "リート",
-            "ETN"
-        };
+    {
+        "ＥＴＦ",
+        "ETF",
+        "投信",
+        "上場投信",
+        "インデックスファンド",
+        "ＮＥＸＴ　ＦＵＮＤＳ",
+        "MAXIS",
+        "ｉＦｒｅｅＥＴＦ",
+        "iFreeETF",
+        "グローバルＸ",
+        "REIT",
+        "リート",
+        "ETN",
+        "ＳＰＤＲ",
+        "SPDR",
+        "ゴールド・シェア",
+        "Gold Shares"
+    };
 
-        var trainingSourceRows = await _db.MlTrainingData
-            .Where(x => x.FutureReturn10 != null)
-            .Join(
-                _db.Companies,
-                ml => ml.Code,
-                company => company.Code,
-                (ml, company) => new
-                {
-                    Ml = ml,
-                    Company = company
-                })
-            .Where(x => x.Company.IsActive)
-            .ToListAsync();
-
-        var inputs = new List<MlStockPredictionInput>();
-
-        foreach (var row in trainingSourceRows
-                     .Where(x => !excludedNameKeywords.Any(keyword =>
-                         x.Company.CompanyName.Contains(keyword)))
-                     .OrderBy(x => x.Ml.TradeDate))
-        {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-                row.Ml.Code,
-                row.Ml.TradeDate);
-
-            if (technicalFeatures == null)
-            {
-                continue;
-            }
-
-            var marketFeatures = await CalculateMarketFeaturesAsync(row.Ml.TradeDate);
-
-            inputs.Add(new MlStockPredictionInput
-            {
-                FinancialScore = row.Ml.FinancialScore,
-                GrowthScore = row.Ml.GrowthScore,
-                DividendScore = row.Ml.DividendScore,
-                RoeScore = row.Ml.RoeScore,
-                PerScore = row.Ml.PerScore,
-                PbrScore = row.Ml.PbrScore,
-                TechnicalScore = row.Ml.TechnicalScore,
-                SwingScore = row.Ml.SwingScore,
-                MarketScore = row.Ml.MarketScore,
-                TradeDate = row.Ml.TradeDate,
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25,
-                Momentum5 = technicalFeatures.Momentum5,
-                Momentum25 = technicalFeatures.Momentum25,
-                DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-                VolumeRatio5 = technicalFeatures.VolumeRatio5,
-                ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-
-                Up5 = row.Ml.Up5
-            });
-        }
+        var inputs = await CreateTrainingInputsAsync();
 
         if (inputs.Count < 50)
         {
@@ -118,110 +73,14 @@ public class MlUp10PredictionService
         var negativeCount = inputs.Count - positiveCount;
 
         Console.WriteLine($"DataCount: {inputs.Count}");
-        Console.WriteLine($"Up5=True : {positiveCount}");
-        Console.WriteLine($"Up5=False: {negativeCount}");
+        Console.WriteLine($"Up10=True : {positiveCount}");
+        Console.WriteLine($"Up10=False: {negativeCount}");
         Console.WriteLine($"PositiveRate: {(double)positiveCount / inputs.Count:P2}");
 
-        var orderedInputs = inputs
-            .OrderBy(x => x.TradeDate)
-            .ToList();
+        // 共通基底クラスでSdca/FastTreeを比較し、採用モデルを保存する。
+        var bestModel = await TrainBestModelAsync();
 
-        var trainCount = (int)(orderedInputs.Count * 0.8);
-
-        var trainInputs = orderedInputs
-            .Take(trainCount)
-            .ToList();
-
-        var testInputs = orderedInputs
-            .Skip(trainCount)
-            .ToList();
-
-        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
-
-        Console.WriteLine($"TrainCount: {trainInputs.Count}");
-        Console.WriteLine($"TestCount : {testInputs.Count}");
-        Console.WriteLine($"TrainDate : {trainInputs.Min(x => x.TradeDate):yyyy-MM-dd} - {trainInputs.Max(x => x.TradeDate):yyyy-MM-dd}");
-        Console.WriteLine($"TestDate  : {testInputs.Min(x => x.TradeDate):yyyy-MM-dd} - {testInputs.Max(x => x.TradeDate):yyyy-MM-dd}");
-
-        var basePipeline = _mlContext.Transforms.Concatenate(
-        "Features",
-        nameof(MlStockPredictionInput.FinancialScore),
-        nameof(MlStockPredictionInput.GrowthScore),
-        nameof(MlStockPredictionInput.DividendScore),
-        nameof(MlStockPredictionInput.RoeScore),
-        nameof(MlStockPredictionInput.PerScore),
-        nameof(MlStockPredictionInput.PbrScore),
-        nameof(MlStockPredictionInput.TechnicalScore),
-        nameof(MlStockPredictionInput.SwingScore),
-        nameof(MlStockPredictionInput.MarketScore),
-        nameof(MlStockPredictionInput.Momentum5),
-        nameof(MlStockPredictionInput.Momentum25),
-        nameof(MlStockPredictionInput.DeviationFromMa25),
-        nameof(MlStockPredictionInput.VolumeRatio5),
-        nameof(MlStockPredictionInput.ClosePositionInRange25),
-        nameof(MlStockPredictionInput.TopixMomentum25),
-        nameof(MlStockPredictionInput.Sp500Momentum25),
-        nameof(MlStockPredictionInput.NasdaqMomentum25),
-        nameof(MlStockPredictionInput.UsdJpyMomentum25),
-        nameof(MlStockPredictionInput.VixMomentum25),
-        nameof(MlStockPredictionInput.Ma25Slope),
-        nameof(MlStockPredictionInput.Ma75Slope))
-    .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
-
-        var sdcaPipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(
-                labelColumnName: "Label",
-                featureColumnName: "Features"));
-
-        var fastTreePipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.FastTree(
-                labelColumnName: "Label",
-                featureColumnName: "Features",
-                numberOfLeaves: 8,
-                numberOfTrees: 100,
-                minimumExampleCountPerLeaf: 10));
-
-        var sdcaModel = sdcaPipeline.Fit(trainSet);
-        var fastTreeModel = fastTreePipeline.Fit(trainSet);
-
-        var sdcaResult = EvaluateModel(
-            modelName: "SdcaLogisticRegression",
-            model: sdcaModel,
-            testSet: testSet);
-
-        var fastTreeResult = EvaluateModel(
-            modelName: "FastTree",
-            model: fastTreeModel,
-            testSet: testSet);
-
-        ITransformer bestModel;
-
-        if (fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate)
-        {
-            bestModel = fastTreeModel;
-        }
-        else
-        {
-            bestModel = sdcaModel;
-        }
-
-        var bestModelName = fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate
-            ? "FastTree"
-            : "SdcaLogisticRegression";
-
-        Console.WriteLine();
-        Console.WriteLine($"=== 採用モデル: {bestModelName} ===");
-
-        Directory.CreateDirectory(ModelDirectory);
-
-        _mlContext.Model.Save(
-            bestModel,
-            trainSet.Schema,
-            ModelPath);
-
-        Console.WriteLine($"モデル保存: {ModelPath}");
-
+        // 必要に応じて最新スコアの予測ランキングを表示する。
         await ShowLatestPredictionRankingAsync(bestModel, excludedNameKeywords);
     }
 
@@ -254,7 +113,7 @@ public class MlUp10PredictionService
             .ToList();
 
         var predictionEngine =
-            _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
+            MlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
 
         var rankingSource = new List<dynamic>();
 
@@ -262,7 +121,7 @@ public class MlUp10PredictionService
         {
             var score = x.Score;
 
-            var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
+            var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
                 score.Code,
                 score.ScoreDate);
 
@@ -271,7 +130,8 @@ public class MlUp10PredictionService
                 continue;
             }
 
-            var marketFeatures = await GetMarketFeaturesWithCacheAsync(score.ScoreDate);
+            var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
+                score.ScoreDate);
 
             var input = new MlStockPredictionInput
             {
@@ -321,7 +181,7 @@ public class MlUp10PredictionService
         }
     }
 
-    private async Task<TechnicalFeatureValues?> CalculateTechnicalFeaturesAsync(
+    private async Task<MlTechnicalFeatures?> CalculateTechnicalFeaturesAsync(
     string code,
     DateTime tradeDate)
     {
@@ -386,7 +246,7 @@ public class MlUp10PredictionService
 
         var range25 = high25 - low25;
 
-        return new TechnicalFeatureValues
+        return new MlTechnicalFeatures
         {
             Momentum5 = (float)((latestClose - close5Ago.Value) / close5Ago.Value * 100m),
             Momentum25 = (float)((latestClose - close25Ago.Value) / close25Ago.Value * 100m),
@@ -408,7 +268,7 @@ public class MlUp10PredictionService
         };
     }
 
-    private async Task<TechnicalFeatureValues?> GetTechnicalFeaturesWithCacheAsync(
+    private async Task<MlTechnicalFeatures?> GetTechnicalFeaturesWithCacheAsync(
     string code,
     DateTime tradeDate)
     {
@@ -419,7 +279,7 @@ public class MlUp10PredictionService
             return cached;
         }
 
-        var technicalFeatures = await CalculateTechnicalFeaturesAsync(
+        var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
             code,
             tradeDate);
 
@@ -428,10 +288,10 @@ public class MlUp10PredictionService
         return technicalFeatures;
     }
 
-    private async Task<MarketFeatureValues> CalculateMarketFeaturesAsync(
-    DateTime tradeDate)
+    private async Task<MlMarketFeatures> CalculateMarketFeaturesAsync(
+        DateTime tradeDate)
     {
-        return new MarketFeatureValues
+        return new MlMarketFeatures
         {
             TopixMomentum25 = await CalculateMarketMomentum25Async("TOPIX", tradeDate),
             Sp500Momentum25 = await CalculateMarketMomentum25Async("SP500", tradeDate),
@@ -441,7 +301,7 @@ public class MlUp10PredictionService
         };
     }
 
-    private async Task<MarketFeatureValues> GetMarketFeaturesWithCacheAsync(
+    private async Task<MlMarketFeatures> GetMarketFeaturesWithCacheAsync(
         DateTime tradeDate)
     {
         if (_marketFeatureCache.TryGetValue(tradeDate, out var cached))
@@ -483,119 +343,6 @@ public class MlUp10PredictionService
         return (float)((latest.Value - first.Value) / first.Value * 100m);
     }
 
-    private class MlStockPredictionWithLabel
-    {
-        public bool Label { get; set; }
-
-        public bool PredictedLabel { get; set; }
-
-        public float Probability { get; set; }
-
-        public float Score { get; set; }
-    }
-
-    private class TechnicalFeatureValues
-    {
-        public float Momentum5 { get; set; }
-
-        public float Momentum25 { get; set; }
-
-        public float DeviationFromMa25 { get; set; }
-
-        public float VolumeRatio5 { get; set; }
-
-        public float ClosePositionInRange25 { get; set; }
-
-        public float Ma25Slope { get; set; }
-
-        public float Ma75Slope { get; set; }
-    }
-
-    private class MarketFeatureValues
-    {
-        public float TopixMomentum25 { get; set; }
-
-        public float Sp500Momentum25 { get; set; }
-
-        public float NasdaqMomentum25 { get; set; }
-
-        public float UsdJpyMomentum25 { get; set; }
-
-        public float VixMomentum25 { get; set; }
-    }
-
-    private class ModelEvaluationResult
-    {
-        public required string ModelName { get; set; }
-
-        public double Accuracy { get; set; }
-
-        public double Auc { get; set; }
-
-        public double F1Score { get; set; }
-
-        public int PredictedPositiveCount { get; set; }
-
-        public int PredictedNegativeCount { get; set; }
-
-        public int Top20HitCount { get; set; }
-
-        public double Top20HitRate { get; set; }
-    }
-
-    private ModelEvaluationResult EvaluateModel(
-    string modelName,
-    ITransformer model,
-    IDataView testSet)
-    {
-        var predictions = model.Transform(testSet);
-
-        var predictionRows = _mlContext.Data
-            .CreateEnumerable<MlStockPredictionWithLabel>(
-                predictions,
-                reuseRowObject: false)
-            .ToList();
-
-        var predictedPositiveCount = predictionRows.Count(x => x.PredictedLabel);
-        var predictedNegativeCount = predictionRows.Count - predictedPositiveCount;
-
-        var top20 = predictionRows
-            .OrderByDescending(x => x.Probability)
-            .Take(20)
-            .ToList();
-
-        var top20HitCount = top20.Count(x => x.Label);
-        var top20HitRate = top20.Count == 0
-            ? 0
-            : (double)top20HitCount / top20.Count;
-
-        var metrics = _mlContext.BinaryClassification.Evaluate(
-            predictions,
-            labelColumnName: "Label");
-
-        Console.WriteLine();
-        Console.WriteLine($"=== {modelName} 評価結果 ===");
-        Console.WriteLine($"Accuracy: {metrics.Accuracy:P2}");
-        Console.WriteLine($"AUC     : {metrics.AreaUnderRocCurve:P2}");
-        Console.WriteLine($"F1Score : {metrics.F1Score:P2}");
-        Console.WriteLine($"Predicted True : {predictedPositiveCount}");
-        Console.WriteLine($"Predicted False: {predictedNegativeCount}");
-        Console.WriteLine($"Test Top20 HitCount: {top20HitCount}");
-        Console.WriteLine($"Test Top20 HitRate : {top20HitRate:P2}");
-
-        return new ModelEvaluationResult
-        {
-            ModelName = modelName,
-            Accuracy = metrics.Accuracy,
-            Auc = metrics.AreaUnderRocCurve,
-            F1Score = metrics.F1Score,
-            PredictedPositiveCount = predictedPositiveCount,
-            PredictedNegativeCount = predictedNegativeCount,
-            Top20HitCount = top20HitCount,
-            Top20HitRate = top20HitRate
-        };
-    }
-
     public async Task<Dictionary<string, decimal>> PredictLatestUp10ProbabilitiesAsync()
     {
         var model = LoadModel();
@@ -615,7 +362,8 @@ public class MlUp10PredictionService
 
         var priceHistoryMap = await GetPriceHistoryMapAsync(targetCodes);
 
-        var marketFeatures = await GetMarketFeaturesWithCacheAsync(latestScoreDate);
+        var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
+            latestScoreDate);
 
         var inputs = new List<MlStockPredictionInput>();
         var codeList = new List<string>();
@@ -671,11 +419,11 @@ public class MlUp10PredictionService
             return new Dictionary<string, decimal>();
         }
 
-        var dataView = _mlContext.Data.LoadFromEnumerable(inputs);
+        var dataView = MlContext.Data.LoadFromEnumerable(inputs);
 
         var predictions = model.Transform(dataView);
 
-        var predictionRows = _mlContext.Data
+        var predictionRows = MlContext.Data
             .CreateEnumerable<MlStockPredictionOutput>(
                 predictions,
                 reuseRowObject: false)
@@ -693,38 +441,24 @@ public class MlUp10PredictionService
         return result;
     }
 
-    private ITransformer? _loadedModel;
-    private PredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>? _predictionEngine;
-
+    /// <summary>
+    /// デフォルトUp10モデルを読み込む。
+    /// 同じモデルは共通基底クラスでキャッシュし、毎回zipを読み直さない。
+    /// </summary>
+    /// <returns>読み込み済みモデル。</returns>
     private ITransformer GetOrLoadModel()
     {
-        if (_loadedModel != null)
-        {
-            return _loadedModel;
-        }
-
-        var modelPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "Models",
-            "up10-model.zip");
-
-        if (!File.Exists(modelPath))
-        {
-            throw new FileNotFoundException(
-                $"Up10モデルが見つかりません: {modelPath}");
-        }
-
-        _loadedModel = _mlContext.Model.Load(modelPath, out _);
-
-        return _loadedModel;
+        return GetOrLoadModel(
+            modelName: "up10-model",
+            modelTitle: "Up10");
     }
 
     public async Task<decimal?> PredictAsync(StockScoreDaily score)
     {
-        var model = GetOrLoadModel();
-
-        _predictionEngine ??=
-            _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
+        // 共通基底クラスから、デフォルトUp10モデル用のPredictionEngineを取得する。
+        var predictionEngine = GetOrCreatePredictionEngine(
+            modelName: "up10-model",
+            modelTitle: "Up10");
 
         var technicalFeatures = await GetTechnicalFeaturesWithCacheAsync(
             score.Code,
@@ -737,181 +471,81 @@ public class MlUp10PredictionService
 
         var marketFeatures = await GetMarketFeaturesWithCacheAsync(score.ScoreDate);
 
-        var input = new MlStockPredictionInput
-        {
-            FinancialScore = score.FinancialScore,
-            GrowthScore = score.GrowthScore,
-            DividendScore = score.DividendScore,
-            RoeScore = score.RoeScore,
-            PerScore = score.PerScore,
-            PbrScore = score.PbrScore,
-            TechnicalScore = score.TechnicalScore,
-            SwingScore = score.SwingScore,
-            MarketScore = score.MarketScore,
+        // 銘柄スコア・テクニカル特徴量・市場特徴量からML入力を作成する。
+        var input = CreatePredictionInput(
+            score,
+            technicalFeatures,
+            marketFeatures);
 
-            Momentum5 = technicalFeatures.Momentum5,
-            Momentum25 = technicalFeatures.Momentum25,
-            DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-            VolumeRatio5 = technicalFeatures.VolumeRatio5,
-            ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-            Ma25Slope = technicalFeatures.Ma25Slope,
-            Ma75Slope = technicalFeatures.Ma75Slope,
-
-            TopixMomentum25 = marketFeatures.TopixMomentum25,
-            Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-            NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-            UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-            VixMomentum25 = marketFeatures.VixMomentum25
-        };
-
-        var prediction = _predictionEngine.Predict(input);
+        var prediction = predictionEngine.Predict(input);
 
         return Math.Round((decimal)prediction.Probability * 100m, 4);
     }
 
+    /// <summary>
+    /// 全期間データを使って、Up10の最良モデルを学習する。
+    /// 共通基底クラスの二値分類学習処理を利用する。
+    /// </summary>
+    /// <returns>学習済みUp10モデル。</returns>
     private async Task<ITransformer> TrainBestModelAsync()
     {
+        // CSVキャッシュからUp10入力データを取得する。
         var inputs = await CreateTrainingInputsAsync();
 
-        var orderedInputs = inputs
+        // 共通基底クラスでSdca/FastTreeの学習・評価・採用・保存を行う。
+        return await TrainBestModelAsync(
+            inputs: inputs,
+            modelName: "up10-model",
+            modelTitle: "Up10",
+            trainFrom: DateTime.MinValue,
+            trainTo: DateTime.MaxValue);
+    }
+
+    /// <summary>
+    /// Up10モデルで使用する特徴量列名を取得する。
+    /// Up10は現時点で市場モメンタム特徴量も含めて評価する。
+    /// </summary>
+    /// <returns>Up10モデルで使用する特徴量列名。</returns>
+    protected override string[] GetFeatureColumns()
+    {
+        return
+        [
+            nameof(MlStockPredictionInput.FinancialScore),
+            nameof(MlStockPredictionInput.GrowthScore),
+            nameof(MlStockPredictionInput.DividendScore),
+            nameof(MlStockPredictionInput.RoeScore),
+            nameof(MlStockPredictionInput.PerScore),
+            nameof(MlStockPredictionInput.PbrScore),
+            nameof(MlStockPredictionInput.TechnicalScore),
+            nameof(MlStockPredictionInput.SwingScore),
+            nameof(MlStockPredictionInput.MarketScore),
+            nameof(MlStockPredictionInput.Momentum5),
+            nameof(MlStockPredictionInput.Momentum25),
+            nameof(MlStockPredictionInput.DeviationFromMa25),
+            nameof(MlStockPredictionInput.VolumeRatio5),
+            nameof(MlStockPredictionInput.ClosePositionInRange25),
+            nameof(MlStockPredictionInput.TopixMomentum25),
+            nameof(MlStockPredictionInput.Sp500Momentum25),
+            nameof(MlStockPredictionInput.NasdaqMomentum25),
+            nameof(MlStockPredictionInput.UsdJpyMomentum25),
+            nameof(MlStockPredictionInput.VixMomentum25),
+            nameof(MlStockPredictionInput.Ma25Slope),
+            nameof(MlStockPredictionInput.Ma75Slope)
+        ];
+    }
+
+    /// <summary>
+    /// CSVキャッシュからUp10学習用入力データを作成する。
+    /// 学習時のAzure SQLアクセスと特徴量再計算を避けるために使用する。
+    /// </summary>
+    /// <returns>Up10学習用入力データ。</returns>
+    private Task<List<MlStockPredictionInput>> CreateTrainingInputsAsync()
+    {
+        var inputs = LoadTrainingDataFromCsv()
             .OrderBy(x => x.TradeDate)
             .ToList();
 
-        var trainCount = (int)(orderedInputs.Count * 0.8);
-
-        var trainInputs = orderedInputs
-            .Take(trainCount)
-            .ToList();
-
-        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-
-        var basePipeline = CreateBasePipeline();
-
-        var sdcaPipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(
-                labelColumnName: "Label",
-                featureColumnName: "Features"));
-
-        return sdcaPipeline.Fit(trainSet);
-    }
-
-    private IEstimator<ITransformer> CreateBasePipeline()
-    {
-        return _mlContext.Transforms.Concatenate(
-                "Features",
-                nameof(MlStockPredictionInput.FinancialScore),
-                nameof(MlStockPredictionInput.GrowthScore),
-                nameof(MlStockPredictionInput.DividendScore),
-                nameof(MlStockPredictionInput.RoeScore),
-                nameof(MlStockPredictionInput.PerScore),
-                nameof(MlStockPredictionInput.PbrScore),
-                nameof(MlStockPredictionInput.TechnicalScore),
-                nameof(MlStockPredictionInput.SwingScore),
-                nameof(MlStockPredictionInput.MarketScore),
-                nameof(MlStockPredictionInput.Momentum5),
-                nameof(MlStockPredictionInput.Momentum25),
-                nameof(MlStockPredictionInput.DeviationFromMa25),
-                nameof(MlStockPredictionInput.VolumeRatio5),
-                nameof(MlStockPredictionInput.ClosePositionInRange25),
-                nameof(MlStockPredictionInput.TopixMomentum25),
-                nameof(MlStockPredictionInput.Sp500Momentum25),
-                nameof(MlStockPredictionInput.NasdaqMomentum25),
-                nameof(MlStockPredictionInput.UsdJpyMomentum25),
-                nameof(MlStockPredictionInput.VixMomentum25),
-                nameof(MlStockPredictionInput.Ma25Slope),
-                nameof(MlStockPredictionInput.Ma75Slope))
-            .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
-    }
-
-    private async Task<List<MlStockPredictionInput>> CreateTrainingInputsAsync()
-    {
-        var excludedNameKeywords = new[]
-        {
-        "ＥＴＦ",
-        "ETF",
-        "投信",
-        "上場投信",
-        "インデックスファンド",
-        "ＮＥＸＴ　ＦＵＮＤＳ",
-        "MAXIS",
-        "ｉＦｒｅｅＥＴＦ",
-        "iFreeETF",
-        "グローバルＸ",
-        "REIT",
-        "リート",
-        "ETN",
-        "ＳＰＤＲ",
-        "SPDR",
-        "ゴールド・シェア",
-        "Gold Shares"
-    };
-
-        var trainingSourceRows = await _db.MlTrainingData
-            .Where(x => x.FutureReturn5 != null)
-            .Join(
-                _db.Companies,
-                ml => ml.Code,
-                company => company.Code,
-                (ml, company) => new
-                {
-                    Ml = ml,
-                    Company = company
-                })
-            .Where(x => x.Company.IsActive)
-            .ToListAsync();
-
-        var inputs = new List<MlStockPredictionInput>();
-
-        foreach (var row in trainingSourceRows
-                     .Where(x => !excludedNameKeywords.Any(keyword =>
-                         x.Company.CompanyName.Contains(keyword)))
-                     .OrderBy(x => x.Ml.TradeDate))
-        {
-            var technicalFeatures = await CalculateTechnicalFeaturesAsync(
-                row.Ml.Code,
-                row.Ml.TradeDate);
-
-            if (technicalFeatures == null)
-            {
-                continue;
-            }
-
-            var marketFeatures = await CalculateMarketFeaturesAsync(
-                row.Ml.TradeDate);
-
-            inputs.Add(new MlStockPredictionInput
-            {
-                TradeDate = row.Ml.TradeDate,
-
-                FinancialScore = row.Ml.FinancialScore,
-                GrowthScore = row.Ml.GrowthScore,
-                DividendScore = row.Ml.DividendScore,
-                RoeScore = row.Ml.RoeScore,
-                PerScore = row.Ml.PerScore,
-                PbrScore = row.Ml.PbrScore,
-                TechnicalScore = row.Ml.TechnicalScore,
-                SwingScore = row.Ml.SwingScore,
-                MarketScore = row.Ml.MarketScore,
-
-                Momentum5 = technicalFeatures.Momentum5,
-                Momentum25 = technicalFeatures.Momentum25,
-                DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-                VolumeRatio5 = technicalFeatures.VolumeRatio5,
-                ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-                Ma25Slope = technicalFeatures.Ma25Slope,
-                Ma75Slope = technicalFeatures.Ma75Slope,
-
-                TopixMomentum25 = marketFeatures.TopixMomentum25,
-                Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-                NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-                UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-                VixMomentum25 = marketFeatures.VixMomentum25,
-
-                Up5 = row.Ml.Up10
-            });
-        }
-
-        return inputs;
+        return Task.FromResult(inputs);
     }
 
     private ITransformer LoadModel()
@@ -922,7 +556,105 @@ public class MlUp10PredictionService
                 $"Up10モデルが見つかりません。先にRUN_ML_UP10_TRAINING=trueで学習してください: {ModelPath}");
         }
 
-        return _mlContext.Model.Load(ModelPath, out _);
+        return MlContext.Model.Load(ModelPath, out _);
+    }
+
+    /// <summary>
+    /// CSVキャッシュからUp10学習用データを読み込む。
+    /// </summary>
+    /// <returns>Up10学習用入力データ。</returns>
+    private List<MlStockPredictionInput> LoadTrainingDataFromCsv()
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "MlCache",
+            "up10_training_data.csv");
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException(
+                $"Up10学習用CSVキャッシュが見つかりません。先にExportUp10TrainingDataAsyncを実行してください: {path}");
+        }
+
+        var lines = File.ReadAllLines(path)
+            .Skip(1);
+
+        var list = new List<MlStockPredictionInput>();
+
+        foreach (var line in lines)
+        {
+            // 空行は学習データとして扱わない。
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var c = line.Split(',');
+
+            // CSV列数が想定と異なる場合は、キャッシュ生成ミスとして明示的に停止する。
+            if (c.Length < 25)
+            {
+                throw new InvalidOperationException(
+                    $"Up10学習用CSVの列数が不足しています。Columns:{c.Length}, Line:{line}");
+            }
+
+            list.Add(new MlStockPredictionInput
+            {
+                TradeDate = DateTime.Parse(
+                    c[0],
+                    CultureInfo.InvariantCulture),
+
+                Code = c[1],
+
+                FinancialScore = ParseFloat(c[2]),
+                GrowthScore = ParseFloat(c[3]),
+                DividendScore = ParseFloat(c[4]),
+                RoeScore = ParseFloat(c[5]),
+                PerScore = ParseFloat(c[6]),
+                PbrScore = ParseFloat(c[7]),
+                TechnicalScore = ParseFloat(c[8]),
+                SwingScore = ParseFloat(c[9]),
+                MarketScore = ParseFloat(c[10]),
+
+                Momentum5 = ParseFloat(c[11]),
+                Momentum25 = ParseFloat(c[12]),
+                DeviationFromMa25 = ParseFloat(c[13]),
+                VolumeRatio5 = ParseFloat(c[14]),
+                ClosePositionInRange25 = ParseFloat(c[15]),
+                Ma25Slope = ParseFloat(c[16]),
+                Ma75Slope = ParseFloat(c[17]),
+
+                TopixMomentum25 = ParseFloat(c[18]),
+                Sp500Momentum25 = ParseFloat(c[19]),
+                NasdaqMomentum25 = ParseFloat(c[20]),
+                UsdJpyMomentum25 = ParseFloat(c[21]),
+                VixMomentum25 = ParseFloat(c[22]),
+
+                // Up10サービスでは、共通入力クラスのLabel列としてUp5プロパティを流用する。
+                // ML.NET側ではColumnName("Label")が付いているため、ここにUp10ラベルを入れる。
+                Up5 = bool.Parse(c[24])
+            });
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// CSV文字列をfloat値へ変換する。
+    /// 空文字は0として扱う。
+    /// </summary>
+    /// <param name="value">CSVから読み込んだ文字列。</param>
+    /// <returns>float値。</returns>
+    private static float ParseFloat(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0f;
+        }
+
+        return float.Parse(
+            value,
+            CultureInfo.InvariantCulture);
     }
 
     private async Task<List<PriceDaily>> GetPriceHistoryWithCacheAsync(string code)
@@ -985,7 +717,7 @@ public class MlUp10PredictionService
                 g => g.ToList());
     }
 
-    private TechnicalFeatureValues? CalculateTechnicalFeaturesFromPrices(
+    private MlTechnicalFeatures? CalculateTechnicalFeaturesFromPrices(
     List<PriceDaily> allPrices,
     DateTime tradeDate)
     {
@@ -1048,7 +780,7 @@ public class MlUp10PredictionService
 
         var range25 = high25 - low25;
 
-        return new TechnicalFeatureValues
+        return new MlTechnicalFeatures
         {
             Momentum5 = (float)((latestClose - close5Ago.Value) / close5Ago.Value * 100m),
 

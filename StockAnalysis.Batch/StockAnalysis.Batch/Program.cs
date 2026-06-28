@@ -30,15 +30,16 @@ const bool RUN_SWING_ADVICE = false;
 const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP10_TRAINING = false;
-const bool RUN_SCREENING = false;
+const bool RUN_SCREENING = true;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
 const bool RUN_BACKTEST = false;
 const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
 const bool RUN_UP5_FEATURE_IMPORTANCE_WF = false;
 const bool RUN_ML_UP5_TRAINING = false;
-const bool RUN_WALK_FORWARD_UP5 = true;
+const bool RUN_WALK_FORWARD_UP5 = false;
 const bool RUN_EXPORT_UP5_ML_CACHE = false;
+const bool RUN_EXPORT_UP10_TRAINING_CACHE = false;
 
 
 // ==============================
@@ -1283,6 +1284,24 @@ if (RUN_ML_UP10_TRAINING)
 
     Console.WriteLine("=== Up10 ML.NET 学習終了 ===");
 
+}
+
+if (RUN_EXPORT_UP10_TRAINING_CACHE)
+{
+    Console.WriteLine();
+    Console.WriteLine("=== Up10 学習CSVキャッシュ出力開始 ===");
+
+    var featureCalculationService = new MlFeatureCalculationService(db);
+
+    var cacheService = new MlTrainingDataCacheService(
+        db,
+        featureCalculationService);
+
+    await cacheService.ExportUp10TrainingDataAsync();
+
+    Console.WriteLine("=== Up10 学習CSVキャッシュ出力終了 ===");
+
+    return;
 }
 
 // ==============================

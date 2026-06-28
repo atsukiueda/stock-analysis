@@ -7,22 +7,25 @@ using Microsoft.ML.Trainers.FastTree;
 using StockAnalysis.Batch.Models.Ml;
 using StockAnalysis.Batch.Services.Interfaces;
 using System.Globalization;
+using StockAnalysis.Batch.Services.Ml.Base;
 
 namespace StockAnalysis.Batch.Services;
 
-public class MlUp5PredictionService : IMlWalkForwardTrainingService
+public class MlUp5PredictionService : MlBinaryPredictionServiceBase, IMlWalkForwardTrainingService
 {
-    private const string ModelDirectory = "Models";
 
     private const string DefaultModelName = "up5-model";
 
     private readonly StockAnalysisDbContext _db;
-    private readonly MLContext _mlContext;
 
     private readonly MlFeatureCalculationService _featureCalculationService;
 
+    /// <summary>
+    /// コンストラクタ。
+    /// </summary>
+    /// <param name="db">DBコンテキスト。</param>
     public MlUp5PredictionService(
-    StockAnalysisDbContext db)
+        StockAnalysisDbContext db)
     {
         _db = db;
         _featureCalculationService = new MlFeatureCalculationService(db);
@@ -190,89 +193,6 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
         //}
     }
 
-    private class MlStockPredictionWithLabel
-    {
-        public bool Label { get; set; }
-
-        public bool PredictedLabel { get; set; }
-
-        public float Probability { get; set; }
-
-        public float Score { get; set; }
-    }
-
-    private class ModelEvaluationResult
-    {
-        public required string ModelName { get; set; }
-
-        public double Accuracy { get; set; }
-
-        public double Auc { get; set; }
-
-        public double F1Score { get; set; }
-
-        public int PredictedPositiveCount { get; set; }
-
-        public int PredictedNegativeCount { get; set; }
-
-        public int Top20HitCount { get; set; }
-
-        public double Top20HitRate { get; set; }
-    }
-
-    private ModelEvaluationResult EvaluateModel(
-    string modelName,
-    ITransformer model,
-    IDataView testSet)
-    {
-        var predictions = model.Transform(testSet);
-
-        var predictionRows = _mlContext.Data
-            .CreateEnumerable<MlStockPredictionWithLabel>(
-                predictions,
-                reuseRowObject: false)
-            .ToList();
-
-        var predictedPositiveCount = predictionRows.Count(x => x.PredictedLabel);
-        var predictedNegativeCount = predictionRows.Count - predictedPositiveCount;
-
-        var top20 = predictionRows
-            .OrderByDescending(x => x.Probability)
-            .Take(20)
-            .ToList();
-
-        var top20HitCount = top20.Count(x => x.Label);
-        var top20HitRate = top20.Count == 0
-            ? 0
-            : (double)top20HitCount / top20.Count;
-
-        var metrics = _mlContext.BinaryClassification.Evaluate(
-            predictions,
-            labelColumnName: "Label");
-
-        Console.WriteLine();
-        Console.WriteLine($"=== {modelName} 評価結果 ===");
-        Console.WriteLine($"Accuracy: {metrics.Accuracy:P2}");
-        Console.WriteLine($"AUC     : {metrics.AreaUnderRocCurve:P2}");
-        Console.WriteLine($"F1Score : {metrics.F1Score:P2}");
-        Console.WriteLine($"Predicted True : {predictedPositiveCount}");
-        Console.WriteLine($"Predicted False: {predictedNegativeCount}");
-        Console.WriteLine($"Test Top20 HitCount: {top20HitCount}");
-        Console.WriteLine($"Test Top20 HitRate : {top20HitRate:P2}");
-
-        return new ModelEvaluationResult
-        {
-            ModelName = modelName,
-            Accuracy = metrics.Accuracy,
-            Auc = metrics.AreaUnderRocCurve,
-            F1Score = metrics.F1Score,
-            PredictedPositiveCount = predictedPositiveCount,
-            PredictedNegativeCount = predictedNegativeCount,
-            Top20HitCount = top20HitCount,
-            Top20HitRate = top20HitRate
-        };
-    }
-
     public async Task<Dictionary<string, decimal>> PredictLatestProbabilitiesAsync()
     {
         var model = LoadModel();
@@ -349,11 +269,11 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
             return new Dictionary<string, decimal>();
         }
 
-        var dataView = _mlContext.Data.LoadFromEnumerable(inputs);
+        var dataView = MlContext.Data.LoadFromEnumerable(inputs);
 
         var predictions = model.Transform(dataView);
 
-        var predictionRows = _mlContext.Data
+        var predictionRows = MlContext.Data
             .CreateEnumerable<MlStockPredictionOutput>(
                 predictions,
                 reuseRowObject: false)
@@ -371,36 +291,17 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
         return result;
     }
 
-    private readonly Dictionary<string, ITransformer> _loadedModelCache = new();
-
-    private readonly Dictionary<string, PredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>> _predictionEngineCache = new();
-
     /// <summary>
     /// 指定されたモデル名のUp5モデルを読み込む。
-    /// 同じモデルはキャッシュし、毎回zipを読み直さない。
+    /// 同じモデルは共通基底クラスでキャッシュし、毎回zipを読み直さない。
     /// </summary>
     /// <param name="modelName">モデル名。拡張子なし。</param>
     /// <returns>読み込み済みモデル。</returns>
     private ITransformer GetOrLoadModel(string modelName)
     {
-        if (_loadedModelCache.TryGetValue(modelName, out var cachedModel))
-        {
-            return cachedModel;
-        }
-
-        var modelPath = CreateModelPath(modelName);
-
-        if (!File.Exists(modelPath))
-        {
-            throw new FileNotFoundException(
-                $"Up5モデルが見つかりません: {modelPath}");
-        }
-
-        var model = _mlContext.Model.Load(modelPath, out _);
-
-        _loadedModelCache[modelName] = model;
-
-        return model;
+        return GetOrLoadModel(
+            modelName: modelName,
+            modelTitle: "Up5");
     }
 
     /// <summary>
@@ -433,15 +334,10 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
         StockScoreDaily score,
         string modelName)
     {
-        var model = GetOrLoadModel(modelName);
-
-        if (!_predictionEngineCache.TryGetValue(modelName, out var predictionEngine))
-        {
-            predictionEngine =
-                _mlContext.Model.CreatePredictionEngine<MlStockPredictionInput, MlStockPredictionOutput>(model);
-
-            _predictionEngineCache[modelName] = predictionEngine;
-        }
+        // 共通基底クラスから、モデル名単位でキャッシュされたPredictionEngineを取得する。
+        var predictionEngine = GetOrCreatePredictionEngine(
+            modelName: modelName,
+            modelTitle: "Up5");
 
         var technicalFeatures = await _featureCalculationService.GetTechnicalFeaturesAsync(
             score.Code,
@@ -455,32 +351,11 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
         var marketFeatures = await _featureCalculationService.GetMarketFeaturesAsync(
             score.ScoreDate);
 
-        var input = new MlStockPredictionInput
-        {
-            FinancialScore = score.FinancialScore,
-            GrowthScore = score.GrowthScore,
-            DividendScore = score.DividendScore,
-            RoeScore = score.RoeScore,
-            PerScore = score.PerScore,
-            PbrScore = score.PbrScore,
-            TechnicalScore = score.TechnicalScore,
-            SwingScore = score.SwingScore,
-            MarketScore = score.MarketScore,
-
-            Momentum5 = technicalFeatures.Momentum5,
-            Momentum25 = technicalFeatures.Momentum25,
-            DeviationFromMa25 = technicalFeatures.DeviationFromMa25,
-            VolumeRatio5 = technicalFeatures.VolumeRatio5,
-            ClosePositionInRange25 = technicalFeatures.ClosePositionInRange25,
-            Ma25Slope = technicalFeatures.Ma25Slope,
-            Ma75Slope = technicalFeatures.Ma75Slope,
-
-            TopixMomentum25 = marketFeatures.TopixMomentum25,
-            Sp500Momentum25 = marketFeatures.Sp500Momentum25,
-            NasdaqMomentum25 = marketFeatures.NasdaqMomentum25,
-            UsdJpyMomentum25 = marketFeatures.UsdJpyMomentum25,
-            VixMomentum25 = marketFeatures.VixMomentum25
-        };
+        // 銘柄スコア・テクニカル特徴量・市場特徴量からML入力を作成する。
+        var input = CreatePredictionInput(
+            score,
+            technicalFeatures,
+            marketFeatures);
 
         var prediction = predictionEngine.Predict(input);
 
@@ -508,129 +383,51 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
 
     /// <summary>
     /// 指定された学習期間のデータだけを使って、Up5の最良モデルを学習する。
-    /// ウォークフォワード検証では、このメソッドで未来データ混入を防ぐ。
+    /// 共通基底クラスの二値分類学習処理を利用し、未来データ混入を防ぐ。
     /// </summary>
     /// <param name="period">学習期間と保存モデル名を表す期間定義。</param>
     /// <returns>学習済みUp5モデル。</returns>
     private async Task<ITransformer> TrainBestModelAsync(TrainingPeriod period)
     {
+        // CSVキャッシュから学習期間内のUp5入力データを取得する。
         var inputs = await CreateTrainingInputsAsync(period);
 
-        if (inputs.Count < 50)
-        {
-            throw new InvalidOperationException(
-                $"Up5学習データが少なすぎます。Model:{period.ModelName}, Count:{inputs.Count}");
-        }
-
-        var orderedInputs = inputs
-            .OrderBy(x => x.TradeDate)
-            .ToList();
-
-        var trainSet = _mlContext.Data.LoadFromEnumerable(orderedInputs);
-
-        var basePipeline = CreateBasePipeline();
-
-        var sdcaPipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(
-                labelColumnName: "Label",
-                featureColumnName: "Features"));
-
-        var fastTreePipeline = basePipeline.Append(
-            _mlContext.BinaryClassification.Trainers.FastTree(
-                labelColumnName: "Label",
-                featureColumnName: "Features",
-                numberOfLeaves: 8,
-                numberOfTrees: 100,
-                minimumExampleCountPerLeaf: 10));
-
-        // 学習期間内の最終20%を疑似検証データとして使い、採用モデルを選ぶ。
-        // 本物のウォークフォワード評価は別途 TestFrom-TestTo のバックテストで行う。
-        var validationStartIndex = (int)(orderedInputs.Count * 0.8);
-
-        var trainInputs = orderedInputs
-            .Take(validationStartIndex)
-            .ToList();
-
-        var validationInputs = orderedInputs
-            .Skip(validationStartIndex)
-            .ToList();
-
-        var modelTrainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-        var validationSet = _mlContext.Data.LoadFromEnumerable(validationInputs);
-
-        var sdcaModel = sdcaPipeline.Fit(modelTrainSet);
-        var fastTreeModel = fastTreePipeline.Fit(modelTrainSet);
-
-        var sdcaResult = EvaluateModel(
-            modelName: "SdcaLogisticRegression",
-            model: sdcaModel,
-            testSet: validationSet);
-
-        var fastTreeResult = EvaluateModel(
-            modelName: "FastTree",
-            model: fastTreeModel,
-            testSet: validationSet);
-
-        ITransformer bestModel;
-
-        if (fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate)
-        {
-            bestModel = fastTreeModel;
-        }
-        else
-        {
-            bestModel = sdcaModel;
-        }
-
-        var bestModelName = fastTreeResult.Top20HitRate >= sdcaResult.Top20HitRate
-            ? "FastTree"
-            : "SdcaLogisticRegression";
-
-        Console.WriteLine();
-        Console.WriteLine($"=== Up5 採用モデル: {bestModelName} ===");
-        Console.WriteLine($"ModelName : {period.ModelName}");
-        Console.WriteLine($"TrainDate : {period.TrainFrom:yyyy-MM-dd} - {period.TrainTo:yyyy-MM-dd}");
-
-        Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, ModelDirectory));
-
-        var modelPath = CreateModelPath(period.ModelName);
-
-        _mlContext.Model.Save(
-            bestModel,
-            trainSet.Schema,
-            modelPath);
-
-        Console.WriteLine($"モデル保存: {modelPath}");
-
-        return bestModel;
+        // 共通基底クラスでSdca/FastTreeの学習・評価・採用・保存を行う。
+        return await TrainBestModelAsync(
+            inputs: inputs,
+            modelName: period.ModelName,
+            modelTitle: "Up5",
+            trainFrom: period.TrainFrom,
+            trainTo: period.TrainTo);
     }
 
-    private IEstimator<ITransformer> CreateBasePipeline()
+    /// <summary>
+    /// Up5モデルで使用する特徴量列名を取得する。
+    /// Feature Importance検証でAUC悪化が確認されたため、現時点では一部の市場特徴量を除外している。
+    /// </summary>
+    /// <returns>Up5モデルで使用する特徴量列名。</returns>
+    protected override string[] GetFeatureColumns()
     {
-        return _mlContext.Transforms.Concatenate(
-                "Features",
-                nameof(MlStockPredictionInput.FinancialScore),
-                nameof(MlStockPredictionInput.GrowthScore),
-                nameof(MlStockPredictionInput.DividendScore),
-                nameof(MlStockPredictionInput.RoeScore),
-                nameof(MlStockPredictionInput.PerScore),
-                nameof(MlStockPredictionInput.PbrScore),
-                nameof(MlStockPredictionInput.TechnicalScore),
-                nameof(MlStockPredictionInput.SwingScore),
-                nameof(MlStockPredictionInput.MarketScore),
-                nameof(MlStockPredictionInput.Momentum5),
-                nameof(MlStockPredictionInput.Momentum25),
-                nameof(MlStockPredictionInput.DeviationFromMa25),
-                nameof(MlStockPredictionInput.VolumeRatio5),
-                nameof(MlStockPredictionInput.ClosePositionInRange25),
-                nameof(MlStockPredictionInput.TopixMomentum25),
-                //nameof(MlStockPredictionInput.Sp500Momentum25),
-                //nameof(MlStockPredictionInput.NasdaqMomentum25),
-                //nameof(MlStockPredictionInput.UsdJpyMomentum25),
-                //nameof(MlStockPredictionInput.VixMomentum25),
-                nameof(MlStockPredictionInput.Ma25Slope),
-                nameof(MlStockPredictionInput.Ma75Slope))
-            .Append(_mlContext.Transforms.NormalizeMinMax("Features"));
+        return
+        [
+            nameof(MlStockPredictionInput.FinancialScore),
+            nameof(MlStockPredictionInput.GrowthScore),
+            nameof(MlStockPredictionInput.DividendScore),
+            nameof(MlStockPredictionInput.RoeScore),
+            nameof(MlStockPredictionInput.PerScore),
+            nameof(MlStockPredictionInput.PbrScore),
+            nameof(MlStockPredictionInput.TechnicalScore),
+            nameof(MlStockPredictionInput.SwingScore),
+            nameof(MlStockPredictionInput.MarketScore),
+            nameof(MlStockPredictionInput.Momentum5),
+            nameof(MlStockPredictionInput.Momentum25),
+            nameof(MlStockPredictionInput.DeviationFromMa25),
+            nameof(MlStockPredictionInput.VolumeRatio5),
+            nameof(MlStockPredictionInput.ClosePositionInRange25),
+            nameof(MlStockPredictionInput.TopixMomentum25),
+            nameof(MlStockPredictionInput.Ma25Slope),
+            nameof(MlStockPredictionInput.Ma75Slope)
+        ];
     }
 
     /// <summary>
@@ -676,20 +473,6 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
     private ITransformer LoadModel()
     {
         return GetOrLoadModel(DefaultModelName);
-    }
-
-    /// <summary>
-    /// Up5モデルの保存パスを作成する。
-    /// ウォークフォワードでは period.ModelName ごとに別ファイルへ保存する。
-    /// </summary>
-    /// <param name="modelName">モデル名。拡張子なしを想定する。</param>
-    /// <returns>モデルzipファイルのパス。</returns>
-    private static string CreateModelPath(string modelName)
-    {
-        return Path.Combine(
-            AppContext.BaseDirectory,
-            ModelDirectory,
-            $"{modelName}.zip");
     }
 
     private async Task<Dictionary<string, List<PriceDaily>>> GetPriceHistoryMapAsync(
@@ -836,11 +619,11 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
             .Skip(trainCount)
             .ToList();
 
-        var trainSet = _mlContext.Data.LoadFromEnumerable(trainInputs);
-        var testSet = _mlContext.Data.LoadFromEnumerable(testInputs);
+        var trainSet = MlContext.Data.LoadFromEnumerable(trainInputs);
+        var testSet = MlContext.Data.LoadFromEnumerable(testInputs);
 
         var pipeline = CreateBasePipeline()
-            .Append(_mlContext.BinaryClassification.Trainers.FastTree(
+            .Append(MlContext.BinaryClassification.Trainers.FastTree(
                 labelColumnName: "Label",
                 featureColumnName: "Features",
                 numberOfLeaves: 8,
@@ -851,7 +634,7 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
 
         var transformedTestSet = model.Transform(testSet);
 
-        var baselineMetrics = _mlContext.BinaryClassification.Evaluate(
+        var baselineMetrics = MlContext.BinaryClassification.Evaluate(
             transformedTestSet,
             labelColumnName: "Label");
 
@@ -899,13 +682,13 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
                 featureName);
 
             var shuffledSet =
-                _mlContext.Data.LoadFromEnumerable(shuffledInputs);
+                MlContext.Data.LoadFromEnumerable(shuffledInputs);
 
             var shuffledPredictions =
                 model.Transform(shuffledSet);
 
             var shuffledMetrics =
-                _mlContext.BinaryClassification.Evaluate(
+                MlContext.BinaryClassification.Evaluate(
                     shuffledPredictions,
                     labelColumnName: "Label");
 
@@ -1168,7 +951,7 @@ public class MlUp5PredictionService : IMlWalkForwardTrainingService
     /// <summary>
     /// CSV文字列をfloat値へ変換する。
     /// 空文字は0として扱い、CSVキャッシュ生成時の欠損値で学習処理が停止しないようにする。
-    /// </summary>
+    /// </summary>f
     /// <param name="value">CSVから読み込んだ文字列。</param>
     /// <returns>float値。</returns>
     private static float ParseFloat(string value)
