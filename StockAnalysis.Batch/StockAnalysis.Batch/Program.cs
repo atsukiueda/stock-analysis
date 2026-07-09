@@ -8,6 +8,7 @@ using static System.Formats.Asn1.AsnWriter;
 using StockAnalysis.Batch.Factories;
 using StockAnalysis.Batch.Services.Ml.Features;
 using StockAnalysis.Batch.Services.Ml.Prediction;
+using StockAnalysis.Batch.Models.Ml;
 
 // ==============================
 // 実行フラグ
@@ -33,10 +34,10 @@ const bool RUN_STOCK_SCORE_HISTORY = false;
 const bool RUN_ML_TRAINING_DATA_GENERATION = false;
 const bool RUN_ML_UP10_TRAINING = false;
 const bool RUN_SCREENING = false;
-const bool RUN_ML_TAKE_PROFIT_TRAINING = true;
-const bool RUN_ML_STOP_LOSS_TRAINING = true;
-const bool RUN_BACKTEST = false;
-const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = true;
+const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
+const bool RUN_ML_STOP_LOSS_TRAINING = false;
+const bool RUN_BACKTEST = true;
+const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
 const bool RUN_UP5_FEATURE_IMPORTANCE_WF = false;
 const bool RUN_ML_UP5_TRAINING = false;
 const bool RUN_WALK_FORWARD_UP5 = false;
@@ -44,7 +45,7 @@ const bool RUN_EXPORT_UP5_ML_CACHE = false;
 const bool RUN_EXPORT_UP10_TRAINING_CACHE = false;
 const bool RUN_EXPORT_TAKEPROFIT_TRAINING_CACHE = false;
 const bool RUN_EXPORT_STOPLOSS_TRAINING_CACHE = false;
-const bool RUN_STOPLOSS_FEATURE_IMPORTANCE = true;
+const bool RUN_STOPLOSS_FEATURE_IMPORTANCE = false;
 
 
 // ==============================

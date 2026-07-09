@@ -12,6 +12,32 @@ namespace StockAnalysis.Batch.Services.Ml.Prediction;
 
 public class MlStopLossPredictionService
 {
+    /// <summary>
+    /// StopLossモデルで使用する回帰アルゴリズム。
+    /// 検証時はここを変更する。
+    /// </summary>
+    private const MlRegressionModelType DefaultRegressionModelType =
+        MlRegressionModelType.FastTree;
+
+    private readonly MlRegressionModelType _regressionModelType;
+
+    /// <summary>
+    /// StopLossモデルの保存名を取得する。
+    /// 回帰アルゴリズムごとに保存先を分け、比較検証時の上書きを防ぐ。
+    /// </summary>
+    /// <returns>モデル保存名。</returns>
+    private string GetModelName()
+    {
+        return _regressionModelType switch
+        {
+            MlRegressionModelType.FastTree => "stoploss-fasttree-model",
+            MlRegressionModelType.LightGbm => "stoploss-lightgbm-model",
+            MlRegressionModelType.FastForest => "stoploss-fastforest-model",
+            _ => throw new NotSupportedException(
+                $"未対応のTakeProfit回帰モデル種別です: {_regressionModelType}")
+        };
+    }
+
     private readonly StockAnalysisDbContext _db;
 
     private readonly MLContext _mlContext;
@@ -33,7 +59,9 @@ public class MlStopLossPredictionService
     private readonly MlStopLossInputFactory _inputFactory;
 
     private readonly MlPredictionEngineStore<MlStopLossInput, MlStopLossOutput> _predictionEngineStore;
-    public MlStopLossPredictionService(StockAnalysisDbContext db)
+    public MlStopLossPredictionService(
+        StockAnalysisDbContext db,
+        MlRegressionModelType? regressionModelType = null)
     {
         _db = db;
         _featureCalculationService = new MlFeatureCalculationService(_db);
@@ -71,13 +99,17 @@ public class MlStopLossPredictionService
             return;
         }
 
+        Console.WriteLine($"ModelType: {_regressionModelType}");
+        Console.WriteLine($"ModelName: {GetModelName()}");
+
         Console.WriteLine($"DataCount: {inputs.Count}");
         Console.WriteLine($"AvgLabel: {inputs.Average(x => x.FutureMinReturn10):F2}%");
         Console.WriteLine($"MaxLabel: {inputs.Max(x => x.FutureMinReturn10):F2}%");
         Console.WriteLine($"MinLabel: {inputs.Min(x => x.FutureMinReturn10):F2}%");
 
         // 共通Trainerで時系列分割・FastTree回帰学習・検証データ予測を行う。
-        var trainingResult = _regressionTrainer.TrainFastTree(
+        var trainingResult = _regressionTrainer.Train(
+            _regressionModelType,
             inputs,
             GetFeatureColumns());
 
@@ -94,7 +126,7 @@ public class MlStopLossPredictionService
         var modelPath = _modelStore.SaveModel(
             model,
             trainSet.Schema,
-            "stoploss-model");
+            GetModelName());
 
         Console.WriteLine($"モデル保存: {modelPath}");
 
@@ -586,7 +618,7 @@ public class MlStopLossPredictionService
     private ITransformer LoadModel()
     {
         return _modelStore.GetOrLoadModel(
-            modelName: "stoploss-model",
+            modelName: GetModelName(),
             modelTitle: "StopLoss");
     }
 
@@ -600,7 +632,7 @@ public class MlStopLossPredictionService
     {
         // 共通PredictionEngineStoreからStopLoss用PredictionEngineを取得する。
         var predictionEngine = _predictionEngineStore.GetOrCreatePredictionEngine(
-            modelName: "stoploss-model",
+            modelName: GetModelName(),
             modelTitle: "StopLoss");
 
         // テクニカル特徴量は共通特徴量計算サービスから取得する。
@@ -645,6 +677,9 @@ public class MlStopLossPredictionService
             return;
         }
 
+        Console.WriteLine($"ModelType: {_regressionModelType}");
+        Console.WriteLine($"ModelName: {GetModelName()}");
+
         var orderedInputs = inputs
             .OrderBy(x => x.TradeDate)
             .ToList();
@@ -669,12 +704,8 @@ public class MlStopLossPredictionService
         var transformedTrainSet = featureTransformer.Transform(trainSet);
         var transformedTestSet = featureTransformer.Transform(testSet);
 
-        var trainer = _mlContext.Regression.Trainers.FastTree(
-            labelColumnName: "Label",
-            featureColumnName: "Features",
-            numberOfLeaves: 16,
-            numberOfTrees: 200,
-            minimumExampleCountPerLeaf: 10);
+        // Feature Importanceでも学習時と同じ回帰アルゴリズムを使用する。
+        var trainer = CreateFeatureImportanceTrainer();
 
         var model = trainer.Fit(transformedTrainSet);
 
@@ -701,9 +732,9 @@ public class MlStopLossPredictionService
             .Select((item, index) => new
             {
                 FeatureName = featureNames[index],
-                RSquaredDrop = item.RSquared.Mean,
-                RmseIncrease = item.RootMeanSquaredError.Mean,
-                MaeIncrease = item.MeanAbsoluteError.Mean
+                RSquaredDrop = item.Value.RSquared.Mean,
+                RmseIncrease = item.Value.RootMeanSquaredError.Mean,
+                MaeIncrease = item.Value.MeanAbsoluteError.Mean
             })
             .OrderByDescending(x => Math.Abs(x.RSquaredDrop))
             .ToList();
@@ -716,6 +747,37 @@ public class MlStopLossPredictionService
                 $"RMSE:{item.RmseIncrease:F6} " +
                 $"MAE:{item.MaeIncrease:F6}");
         }
+    }
+
+    /// <summary>
+    /// Feature Importance分析で使用する回帰Trainerを作成する。
+    /// 学習時と同じ回帰アルゴリズムを使用し、評価条件のズレを防ぐ。
+    /// </summary>
+    /// <returns>特徴量重要度分析用Trainer。</returns>
+    private IEstimator<ITransformer> CreateFeatureImportanceTrainer()
+    {
+        return _regressionModelType switch
+        {
+            MlRegressionModelType.FastTree =>
+                _mlContext.Regression.Trainers.FastTree(
+                    labelColumnName: "Label",
+                    featureColumnName: "Features",
+                    numberOfLeaves: 16,
+                    numberOfTrees: 200,
+                    minimumExampleCountPerLeaf: 10),
+
+            MlRegressionModelType.LightGbm =>
+                _mlContext.Regression.Trainers.LightGbm(
+                    labelColumnName: "Label",
+                    featureColumnName: "Features",
+                    numberOfLeaves: 31,
+                    numberOfIterations: 200,
+                    minimumExampleCountPerLeaf: 20,
+                    learningRate: 0.05),
+
+            _ => throw new NotSupportedException(
+                $"Feature Importance未対応のStopLoss回帰モデル種別です: {_regressionModelType}")
+        };
     }
 
     private async Task<List<PriceDaily>> GetPriceHistoryWithCacheAsync(string code)

@@ -8,6 +8,7 @@ using StockAnalysis.Batch.Backtest.Analysis;
 using StockAnalysis.Batch.Backtest.Report;
 using StockAnalysis.Batch.Backtest.Scenario;
 using StockAnalysis.Batch.Services.Ml.Prediction;
+using StockAnalysis.Batch.Models.Ml;
 
 namespace StockAnalysis.Batch.Services;
 
@@ -37,6 +38,12 @@ public class BacktestService
     private const bool ShowRegimeAnalysis = false;
     private const bool ShowExpectedTpAnalysis = false;
 
+    /// <summary>
+    /// 今回のバックテスト比較CSVに出力する回帰モデル名。
+    /// TakeProfit / StopLoss のRegressionModelTypeと一致させる。
+    /// </summary>
+    private const string RegressionComparisonModelName = "Ensemble_LGBM70_FT30";
+
     private readonly StockAnalysisDbContext _db;
 
     private readonly Dictionary<string, decimal?> _entryPriceCache = new();
@@ -50,6 +57,8 @@ public class BacktestService
     private readonly BacktestReporter _backtestReporter = new();
 
     private readonly ScenarioFactory _scenarioFactory = new();
+
+    private readonly BacktestComparisonExporter _comparisonExporter = new();
 
     public BacktestService(StockAnalysisDbContext db)
     {
@@ -76,8 +85,27 @@ public class BacktestService
 
         var up5Service = new MlUp5PredictionService(_db);
         var up10Service = new MlUp10PredictionService(_db);
-        var takeProfitService = new MlTakeProfitPredictionService(_db);
-        var stopLossService = new MlStopLossPredictionService(_db);
+
+        // LightGBMを主軸、FastTreeを補助として使うWeighted Ensembleを作成する。
+        var regressionPredictionProvider =
+            new MlWeightedEnsemblePredictionProvider(
+            [
+                new RegressionPredictionProviderWeight
+                {
+                    Provider = new MlSingleModelPredictionProvider(
+                        _db,
+                        MlRegressionModelType.LightGbm),
+                    Weight = 0.7m
+                },
+                new RegressionPredictionProviderWeight
+                {
+                    Provider = new MlSingleModelPredictionProvider(
+                        _db,
+                        MlRegressionModelType.FastTree),
+                    Weight = 0.3m
+                }
+            ]);
+
         var filterAnalysisRows = new List<FilterAnalysisRow>();
         var filterRecorder = new FilterAnalysisRecorder();
 
@@ -112,8 +140,7 @@ public class BacktestService
                 scenarios,
                 up5Service,
                 up10Service,
-                takeProfitService,
-                stopLossService,
+                regressionPredictionProvider,
                 up5ModelName,
                 filterRecorder);
 
@@ -182,6 +209,13 @@ public class BacktestService
         _backtestReporter.ExportSensitivityResultsToCsv(sensitivityResults);
         _backtestReporter.ExportFilterAnalysisToCsv(
             filterRecorder.GetRows());
+
+        // 回帰モデル比較用CSVへ、今回のバックテスト結果を追記する。
+        // 現時点ではTakeProfit/StopLossがLightGBM固定のため、モデル名も固定で出力する。
+        _comparisonExporter.Export(
+            RegressionComparisonModelName,
+            sensitivityResults);
+
         _backtestReporter.PrintSensitivityHeader();
     }
 
@@ -191,8 +225,7 @@ public class BacktestService
         List<BacktestScenario> scenarios,
         MlUp5PredictionService up5Service,
         MlUp10PredictionService up10Service,
-        MlTakeProfitPredictionService takeProfitService,
-        MlStopLossPredictionService stopLossService,
+        IRegressionPredictionProvider regressionPredictionProvider,
         string? up5ModelName,
         FilterAnalysisRecorder filterRecorder)
     {
@@ -254,8 +287,14 @@ public class BacktestService
                         up5ModelName);
             }
             var up10Probability = await up10Service.PredictAsync(row.Score);
-            var expectedTakeProfit = await takeProfitService.PredictAsync(row.Score);
-            var expectedStopLoss = await stopLossService.PredictAsync(row.Score);
+
+            // TakeProfit / StopLoss はProvider経由で取得する。
+            // 単一モデルでもEnsembleでも、バックテスト側は同じインターフェースで扱う。
+            var regressionPrediction =
+                await regressionPredictionProvider.PredictAsync(row.Score);
+
+            var expectedTakeProfit = regressionPrediction.TakeProfit;
+            var expectedStopLoss = regressionPrediction.StopLoss;
 
             if (up5Probability == null)
             {
@@ -523,20 +562,20 @@ public class BacktestService
 
             // 候補が0件になるシナリオだけ、原因追跡用に出力する。
             // 出力しすぎるとコンソールが読みにくくなるため、0件時に限定する。
-            if (diagnostic.FinalCandidateCount == 0 &&
-                diagnostic.RankingCount > 0)
-            {
-                Console.WriteLine(
-                    $"FilterDiag {diagnostic.EntryDate:yyyy-MM-dd} " +
-                    $"{diagnostic.ScenarioName} " +
-                    $"Ranking:{diagnostic.RankingCount} " +
-                    $"Regime:{diagnostic.RegimePassCount} " +
-                    $"TP:{diagnostic.ExpectedTpPassCount} " +
-                    $"M25:{diagnostic.Momentum25PassCount} " +
-                    $"M5:{diagnostic.Momentum5PassCount} " +
-                    $"EV:{diagnostic.ExpectedValuePassCount} " +
-                    $"Final:{diagnostic.FinalCandidateCount}");
-            }
+            //if (diagnostic.FinalCandidateCount == 0 &&
+            //    diagnostic.RankingCount > 0)
+            //{
+            //    Console.WriteLine(
+            //        $"FilterDiag {diagnostic.EntryDate:yyyy-MM-dd} " +
+            //        $"{diagnostic.ScenarioName} " +
+            //        $"Ranking:{diagnostic.RankingCount} " +
+            //        $"Regime:{diagnostic.RegimePassCount} " +
+            //        $"TP:{diagnostic.ExpectedTpPassCount} " +
+            //        $"M25:{diagnostic.Momentum25PassCount} " +
+            //        $"M5:{diagnostic.Momentum5PassCount} " +
+            //        $"EV:{diagnostic.ExpectedValuePassCount} " +
+            //        $"Final:{diagnostic.FinalCandidateCount}");
+            //}
 
             foreach (var candidate in candidates)
             {
@@ -686,18 +725,18 @@ public class BacktestService
                 });
             }
         }
-        if (entryDate.Year == 2024 && sourceRows.Count > 0)
-        {
-            Console.WriteLine(
-                $"Date:{entryDate:yyyy-MM-dd} " +
-                $"Source:{sourceRows.Count} " +
-                $"Ranking:{rankingRows.Count} " +
-                $"NullUp5:{nullUp5Count} " +
-                $"NullUp10:{nullUp10Count} " +
-                $"NullTP:{nullTakeProfitCount} " +
-                $"NullSL:{nullStopLossCount} " +
-                $"NullM25:{nullMomentum25Count}");
-        }
+        //if (entryDate.Year == 2024 && sourceRows.Count > 0)
+        //{
+        //    Console.WriteLine(
+        //        $"Date:{entryDate:yyyy-MM-dd} " +
+        //        $"Source:{sourceRows.Count} " +
+        //        $"Ranking:{rankingRows.Count} " +
+        //        $"NullUp5:{nullUp5Count} " +
+        //        $"NullUp10:{nullUp10Count} " +
+        //        $"NullTP:{nullTakeProfitCount} " +
+        //        $"NullSL:{nullStopLossCount} " +
+        //        $"NullM25:{nullMomentum25Count}");
+        //}
 
         return resultsByScenario;
     }

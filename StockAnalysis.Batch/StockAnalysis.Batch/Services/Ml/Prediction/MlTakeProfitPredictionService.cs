@@ -12,6 +12,15 @@ namespace StockAnalysis.Batch.Services.Ml.Prediction;
 
 public class MlTakeProfitPredictionService
 {
+    /// <summary>
+    /// TakeProfitモデルで使用する回帰アルゴリズム。
+    /// 検証時はここを変更する。
+    /// </summary>
+    private const MlRegressionModelType DefaultRegressionModelType =
+        MlRegressionModelType.FastTree;
+
+    private readonly MlRegressionModelType _regressionModelType;
+
     private readonly StockAnalysisDbContext _db;
 
     private readonly MLContext _mlContext;
@@ -35,6 +44,23 @@ public class MlTakeProfitPredictionService
     private readonly MlTakeProfitInputFactory _inputFactory;
 
     /// <summary>
+    /// TakeProfitモデルの保存名を取得する。
+    /// 回帰アルゴリズムごとに保存先を分け、比較検証時の上書きを防ぐ。
+    /// </summary>
+    /// <returns>モデル保存名。</returns>
+    private string GetModelName()
+    {
+        return _regressionModelType switch
+        {
+            MlRegressionModelType.FastTree => "takeprofit-fasttree-model",
+            MlRegressionModelType.LightGbm => "takeprofit-lightgbm-model",
+            MlRegressionModelType.FastForest => "takeprofit-fastforest-model",
+            _ => throw new NotSupportedException(
+                $"未対応のTakeProfit回帰モデル種別です: {_regressionModelType}")
+        };
+    }
+
+    /// <summary>
     /// CSVキャッシュからTakeProfit学習用入力データを作成する。
     /// 学習時のAzure SQLアクセスと特徴量再計算を避けるために使用する。
     /// </summary>
@@ -49,9 +75,13 @@ public class MlTakeProfitPredictionService
         return Task.FromResult(inputs);
     }
 
-    public MlTakeProfitPredictionService(StockAnalysisDbContext db)
+    public MlTakeProfitPredictionService(
+        StockAnalysisDbContext db,
+        MlRegressionModelType? regressionModelType = null)
     {
         _db = db;
+        _regressionModelType =
+            regressionModelType ?? DefaultRegressionModelType;
         _mlContext = new MLContext(seed: 1);
 
         _featureCalculationService = new MlFeatureCalculationService(_db);
@@ -87,13 +117,17 @@ public class MlTakeProfitPredictionService
             return;
         }
 
+        Console.WriteLine($"ModelType: {_regressionModelType}");
+        Console.WriteLine($"ModelName: {GetModelName()}");
+
         Console.WriteLine($"DataCount: {inputs.Count}");
         Console.WriteLine($"AvgLabel: {inputs.Average(x => x.FutureMaxReturn10):F2}%");
         Console.WriteLine($"MaxLabel: {inputs.Max(x => x.FutureMaxReturn10):F2}%");
         Console.WriteLine($"MinLabel: {inputs.Min(x => x.FutureMaxReturn10):F2}%");
 
         // 共通Trainerで時系列分割・FastTree回帰学習・検証データ予測を行う。
-        var trainingResult = _regressionTrainer.TrainFastTree(
+        var trainingResult = _regressionTrainer.Train(
+            _regressionModelType,
             inputs,
             GetFeatureColumns());
 
@@ -110,7 +144,7 @@ public class MlTakeProfitPredictionService
         var modelPath = _modelStore.SaveModel(
             model,
             trainSet.Schema,
-            "takeprofit-model");
+            GetModelName());
 
         Console.WriteLine($"モデル保存: {modelPath}");
 
@@ -130,6 +164,9 @@ public class MlTakeProfitPredictionService
             Console.WriteLine($"特徴量重要度分析に必要なデータが少なすぎます。件数: {inputs.Count}");
             return;
         }
+
+        Console.WriteLine($"ModelType: {_regressionModelType}");
+        Console.WriteLine($"ModelName: {GetModelName()}");
 
         var orderedInputs = inputs
             .OrderBy(x => x.TradeDate)
@@ -155,12 +192,8 @@ public class MlTakeProfitPredictionService
         var transformedTrainSet = featureTransformer.Transform(trainSet);
         var transformedTestSet = featureTransformer.Transform(testSet);
 
-        var trainer = _mlContext.Regression.Trainers.FastTree(
-            labelColumnName: "Label",
-            featureColumnName: "Features",
-            numberOfLeaves: 16,
-            numberOfTrees: 200,
-            minimumExampleCountPerLeaf: 10);
+        // Feature Importanceでも学習時と同じ回帰アルゴリズムを使用する。
+        var trainer = CreateFeatureImportanceTrainer();
 
         var model = trainer.Fit(transformedTrainSet);
 
@@ -186,9 +219,9 @@ public class MlTakeProfitPredictionService
             .Select((item, index) => new
             {
                 FeatureName = featureNames[index],
-                RSquaredDrop = item.RSquared.Mean,
-                RmseIncrease = item.RootMeanSquaredError.Mean,
-                MaeIncrease = item.MeanAbsoluteError.Mean
+                RSquaredDrop = item.Value.RSquared.Mean,
+                RmseIncrease = item.Value.RootMeanSquaredError.Mean,
+                MaeIncrease = item.Value.MeanAbsoluteError.Mean
             })
             .OrderByDescending(x => Math.Abs(x.RSquaredDrop))
             .ToList();
@@ -201,6 +234,37 @@ public class MlTakeProfitPredictionService
                 $"RMSE:{item.RmseIncrease:F6} " +
                 $"MAE:{item.MaeIncrease:F6}");
         }
+    }
+
+    /// <summary>
+    /// Feature Importance分析で使用する回帰Trainerを作成する。
+    /// 学習時と同じ回帰アルゴリズムを使用し、評価条件のズレを防ぐ。
+    /// </summary>
+    /// <returns>特徴量重要度分析用Trainer。</returns>
+    private IEstimator<ITransformer> CreateFeatureImportanceTrainer()
+    {
+        return _regressionModelType switch
+        {
+            MlRegressionModelType.FastTree =>
+                _mlContext.Regression.Trainers.FastTree(
+                    labelColumnName: "Label",
+                    featureColumnName: "Features",
+                    numberOfLeaves: 16,
+                    numberOfTrees: 200,
+                    minimumExampleCountPerLeaf: 10),
+
+            MlRegressionModelType.LightGbm =>
+                _mlContext.Regression.Trainers.LightGbm(
+                    labelColumnName: "Label",
+                    featureColumnName: "Features",
+                    numberOfLeaves: 31,
+                    numberOfIterations: 200,
+                    minimumExampleCountPerLeaf: 20,
+                    learningRate: 0.05),
+
+            _ => throw new NotSupportedException(
+                $"Feature Importance未対応のTakeProfit回帰モデル種別です: {_regressionModelType}")
+        };
     }
 
     /// <summary>
@@ -583,7 +647,7 @@ public class MlTakeProfitPredictionService
     private ITransformer LoadModel()
     {
         return _modelStore.GetOrLoadModel(
-            modelName: "takeprofit-model",
+            modelName: GetModelName(),
             modelTitle: "TakeProfit");
     }
 
@@ -676,7 +740,7 @@ public class MlTakeProfitPredictionService
     {
         // 共通PredictionEngineStoreからTakeProfit用PredictionEngineを取得する。
         var predictionEngine = _predictionEngineStore.GetOrCreatePredictionEngine(
-            modelName: "takeprofit-model",
+            modelName: GetModelName(),
             modelTitle: "TakeProfit");
 
         // テクニカル特徴量は共通特徴量計算サービスから取得する。
