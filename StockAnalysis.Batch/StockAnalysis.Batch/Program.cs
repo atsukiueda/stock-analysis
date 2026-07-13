@@ -36,7 +36,7 @@ const bool RUN_ML_UP10_TRAINING = false;
 const bool RUN_SCREENING = false;
 const bool RUN_ML_TAKE_PROFIT_TRAINING = false;
 const bool RUN_ML_STOP_LOSS_TRAINING = false;
-const bool RUN_BACKTEST = true;
+const bool RUN_BACKTEST = false;
 const bool RUN_TAKEPROFIT_FEATURE_IMPORTANCE = false;
 const bool RUN_UP5_FEATURE_IMPORTANCE_WF = false;
 const bool RUN_ML_UP5_TRAINING = false;
@@ -46,6 +46,10 @@ const bool RUN_EXPORT_UP10_TRAINING_CACHE = false;
 const bool RUN_EXPORT_TAKEPROFIT_TRAINING_CACHE = false;
 const bool RUN_EXPORT_STOPLOSS_TRAINING_CACHE = false;
 const bool RUN_STOPLOSS_FEATURE_IMPORTANCE = false;
+// EDINET Inventory Cross-company Validationを実行する。
+// Production処理ではなく、Data Acquisition及び
+// Extraction StructureのResearch Validation専用。
+const bool RUN_EDINET_INVENTORY_VALIDATION = true;
 
 
 // ==============================
@@ -109,6 +113,236 @@ var alphaVantageApiKey =
 // ==============================
 
 using var httpClient = new HttpClient();
+
+// ==============================
+// EDINET Cross-company Inventory Validation
+// Renesas Electronics
+// ==============================
+
+if (RUN_EDINET_INVENTORY_VALIDATION)
+{
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== EDINET RENESAS ELECTRONICS INVENTORY VALIDATION ===");
+
+    // Cross-company Validation Research用Prototype Serviceを生成する。
+    //
+    // Production Serviceではなく、
+    // IFRS適用半導体企業におけるInventory Extraction Structureの
+    // Variation確認に使用する。
+    var edinetPrototypeService =
+        new EdinetInventoryPrototypeService(
+            httpClient,
+            configuration);
+
+    // ルネサス エレクトロニクス第24期有価証券報告書は、
+    // 2026年3月13日付で公式IRに掲載されている。
+    //
+    // EDINET Filing IdentityはDocument List APIの
+    // 実Responseから最終確認する。
+    var filingDate = new DateTime(
+        2026,
+        3,
+        19);
+
+    // EDINET Responseでは証券コードが5桁形式で返却される。
+    // ルネサス エレクトロニクスの上場証券コード6723に対応する
+    // Document List検索Candidateとして67230を指定する。
+    const string targetSecurityCode = "67230";
+
+    var targetDocuments =
+        await edinetPrototypeService.GetDocumentsBySecurityCodeAsync(
+            filingDate,
+            targetSecurityCode);
+
+    Console.WriteLine();
+    Console.WriteLine(
+        $"Renesas Electronics Document Count: {targetDocuments.Count}");
+
+    // 指定日にルネサス エレクトロニクスが提出した
+    // EDINET書類をすべて表示する。
+    //
+    // Annual Securities ReportのDocument ID、
+    // EDINET Code及び各取得Flagを
+    // 実API ResponseからEvidenceとして確定する。
+    foreach (var document in targetDocuments)
+    {
+        Console.WriteLine();
+        Console.WriteLine("------------------------------");
+
+        Console.WriteLine(
+            $"Document ID   : {document.DocumentId}");
+
+        Console.WriteLine(
+            $"Description   : {document.DocumentDescription}");
+
+        Console.WriteLine(
+            $"EDINET Code   : {document.EdinetCode}");
+
+        Console.WriteLine(
+            $"Security Code : {document.SecurityCode}");
+
+        Console.WriteLine(
+            $"Filer Name    : {document.FilerName}");
+
+        Console.WriteLine(
+            $"Document Type : {document.DocumentTypeCode}");
+
+        Console.WriteLine(
+            $"Period Start  : {document.PeriodStart}");
+
+        Console.WriteLine(
+            $"Period End    : {document.PeriodEnd}");
+
+        Console.WriteLine(
+            $"Submitted At  : {document.SubmitDateTime}");
+
+        Console.WriteLine(
+            $"Parent Doc ID : {document.ParentDocumentId}");
+
+        Console.WriteLine(
+            $"Withdrawal    : {document.WithdrawalStatus}");
+
+        Console.WriteLine(
+            $"Disclosure    : {document.DisclosureStatus}");
+
+        Console.WriteLine(
+            $"CSV Available : {document.CsvFlag}");
+
+        Console.WriteLine(
+            $"XBRL Available: {document.XbrlFlag}");
+    }
+
+    // ルネサス エレクトロニクス第24期有価証券報告書を
+    // EDINET Document List APIの実Responseから選択する。
+    //
+    // Document IDは推測値ではなく、
+    // Filing Discoveryで確認した実API Evidenceに基づき固定する。
+    var annualSecuritiesReport =
+        targetDocuments.SingleOrDefault(x =>
+            string.Equals(
+                x.DocumentId,
+                "S100XR06",
+                StringComparison.Ordinal));
+
+    if (annualSecuritiesReport == null)
+    {
+        throw new InvalidOperationException(
+            "ルネサス エレクトロニクス第24期有価証券報告書 " +
+            "S100XR06 を取得できませんでした。");
+    }
+
+    // CSV及びXBRL取得可否を確認する。
+    //
+    // Cross-company Validationでは、
+    // Document List APIの取得Flagを確認してから
+    // 書類取得APIを呼び出す。
+    if (!string.Equals(
+            annualSecuritiesReport.CsvFlag,
+            "1",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "対象有価証券報告書はCSV取得対象ではありません。");
+    }
+
+    if (!string.Equals(
+            annualSecuritiesReport.XbrlFlag,
+            "1",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "対象有価証券報告書はXBRL取得対象ではありません。");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== RENESAS ELECTRONICS ANNUAL SECURITIES REPORT SELECTED ===");
+
+    Console.WriteLine(
+        $"Document ID : {annualSecuritiesReport.DocumentId}");
+
+    Console.WriteLine(
+        $"EDINET Code : {annualSecuritiesReport.EdinetCode}");
+
+    Console.WriteLine(
+        $"Submitted At: {annualSecuritiesReport.SubmitDateTime}");
+
+    Console.WriteLine(
+        $"Period End  : {annualSecuritiesReport.PeriodEnd}");
+
+    Console.WriteLine(
+        $"CSV Flag    : {annualSecuritiesReport.CsvFlag}");
+
+    Console.WriteLine(
+        $"XBRL Flag   : {annualSecuritiesReport.XbrlFlag}");
+
+    // EDINET書類取得APIからXBRL変換CSV ZIPを取得する。
+    //
+    // IFRS適用企業であるルネサスについて、
+    // Inventory Total及びComponent Fact Candidateを
+    // CSV PrimaryでDiscoveryする。
+    var csvZipBytes =
+        await edinetPrototypeService.DownloadCsvZipAsync(
+            annualSecuritiesReport.DocumentId!);
+
+    // ZIP Entry一覧を表示し、
+    // Annual Securities Report CSVを識別する。
+    edinetPrototypeService.PrintCsvZipEntries(
+        csvZipBytes);
+
+    // CSV全体からInventory関連Candidateを検索する。
+    //
+    // Kioxiaで確認したIFRS Concept Patternを
+    // ルネサスへ機械的に適用しない。
+    // 実Filingに存在するConceptをDiscoveryする。
+    edinetPrototypeService.PrintInventoryCandidateLines(
+        csvZipBytes);
+
+    // Inventory関連Concept QName Candidateを
+    // 重複除去して表示する。
+    //
+    // Standard IFRS Taxonomy及び
+    // Company Extension Candidateの双方を確認する。
+    edinetPrototypeService.PrintInventoryCandidateConceptNames(
+        csvZipBytes);
+
+    // EDINET書類取得APIからRaw XBRL関連ZIPを取得する。
+    //
+    // CSVで確認したルネサスのIFRS Inventory Total及び
+    // 3 Component Factについて、Raw XBRL Instance上の
+    // Concept、Context、Unit、Decimals、ValueをCross-checkする。
+    var xbrlZipBytes =
+        await edinetPrototypeService.DownloadXbrlZipAsync(
+            annualSecuritiesReport.DocumentId!);
+
+    // Raw XBRL ZIP内のDirectory及びFile構造を確認する。
+    //
+    // PublicDoc及びAuditDocを区別し、
+    // Annual Securities Report XBRL Instanceを確認する。
+    edinetPrototypeService.PrintXbrlZipEntries(
+        xbrlZipBytes);
+
+    // Raw XBRL InstanceからInventory関連Fact Candidateを検索する。
+    //
+    // RenesasではCSV Evidenceにより、以下のIFRS Standard Conceptsを
+    // Inventory Total及びComponent Candidateとして確認済み。
+    //
+    // jpigp_cor:InventoriesCAIFRS
+    // jpigp_cor:MerchandiseAndFinishedGoodsCAIFRS
+    // jpigp_cor:WorkInProcessCAIFRS
+    // jpigp_cor:RawMaterialsAndSuppliesCAIFRS
+    //
+    // Current / PriorについてContextRef、UnitRef、Decimals、Raw Valueを確認する。
+    edinetPrototypeService.PrintXbrlInventoryCandidateFacts(
+        xbrlZipBytes);
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== RENESAS ELECTRONICS XBRL INVENTORY CROSS CHECK END ===");
+
+    return;
+}
 
 // ==============================
 // 財務情報取得
