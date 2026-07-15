@@ -49,7 +49,10 @@ const bool RUN_STOPLOSS_FEATURE_IMPORTANCE = false;
 // EDINET Inventory Cross-company Validationを実行する。
 // Production処理ではなく、Data Acquisition及び
 // Extraction StructureのResearch Validation専用。
-const bool RUN_EDINET_INVENTORY_VALIDATION = true;
+const bool RUN_EDINET_INVENTORY_VALIDATION = false;
+// Semantic Mapping Phase Aの
+// EF Core Read-only Validationを実行するかを制御する。
+const bool RUN_SEMANTIC_MAPPING_PHASE_A_VALIDATION = true;
 
 
 // ==============================
@@ -340,6 +343,187 @@ if (RUN_EDINET_INVENTORY_VALIDATION)
     Console.WriteLine();
     Console.WriteLine(
         "=== RENESAS ELECTRONICS XBRL INVENTORY CROSS CHECK END ===");
+
+    return;
+}
+
+// ============================================================
+// Semantic Mapping Phase A
+// EF Core Read-only Validation
+// ============================================================
+
+if (RUN_SEMANTIC_MAPPING_PHASE_A_VALIDATION)
+{
+    // Semantic Mapping Phase A
+    // EF Core Read-only Validation
+    // ============================================================
+    //
+    // Azure SQLへ適用済みのSemantic Mapping Governance Dataを
+    // EF Core Entity及びNavigation Property経由で正常に取得できることを確認する。
+    //
+    // 本ValidationはRead-onlyであり、
+    // DatabaseへのInsert、Update、Deleteは一切行わない。
+    var semanticCanonicalRoleCount =
+        await db.SemanticCanonicalRoles
+            .AsNoTracking()
+            .CountAsync();
+
+    var semanticMappingRuleCount =
+        await db.SemanticMappingRules
+            .AsNoTracking()
+            .CountAsync();
+
+    var semanticMappingScopeCount =
+        await db.SemanticMappingScopes
+            .AsNoTracking()
+            .CountAsync();
+
+    var semanticMappingEvidenceReferenceCount =
+        await db.SemanticMappingEvidenceReferences
+            .AsNoTracking()
+            .CountAsync();
+
+    var semanticRejectedMappingDecisionCount =
+        await db.SemanticRejectedMappingDecisions
+            .AsNoTracking()
+            .CountAsync();
+
+    // Production Activationがまだ承認されていないため、
+    // Active Mapping Ruleは0件であることを確認する。
+    var activeMappingRuleCount =
+        await db.SemanticMappingRules
+            .AsNoTracking()
+            .CountAsync(x => x.StatusCode == "Active");
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== SEMANTIC MAPPING PHASE A EF CORE VALIDATION ===");
+
+    Console.WriteLine(
+        $"SemanticCanonicalRoles             : {semanticCanonicalRoleCount}");
+
+    Console.WriteLine(
+        $"SemanticMappingRules               : {semanticMappingRuleCount}");
+
+    Console.WriteLine(
+        $"SemanticMappingScopes              : {semanticMappingScopeCount}");
+
+    Console.WriteLine(
+        $"SemanticMappingEvidenceReferences  : {semanticMappingEvidenceReferenceCount}");
+
+    Console.WriteLine(
+        $"SemanticRejectedMappingDecisions   : {semanticRejectedMappingDecisionCount}");
+
+    Console.WriteLine(
+        $"Active Mapping Rules               : {activeMappingRuleCount}");
+
+    // ============================================================
+    // Mapping Rule → Canonical Role Navigation Validation
+    // ============================================================
+    //
+    // 11件すべてのMapping Ruleについて、
+    // CanonicalRole Navigationが正常に解決されることを確認する。
+    var mappingRules =
+        await db.SemanticMappingRules
+            .AsNoTracking()
+            .Include(x => x.CanonicalRole)
+            .OrderBy(x => x.MappingCode)
+            .ThenBy(x => x.MappingVersion)
+            .ToListAsync();
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== SEMANTIC MAPPING RULE NAVIGATION VALIDATION ===");
+
+    foreach (var mappingRule in mappingRules)
+    {
+        Console.WriteLine(
+            $"{mappingRule.MappingCode} " +
+            $"v{mappingRule.MappingVersion} | " +
+            $"{mappingRule.SourceQName} -> " +
+            $"{mappingRule.CanonicalRole.RoleCode} | " +
+            $"Class={mappingRule.MappingClassCode} | " +
+            $"Status={mappingRule.StatusCode}");
+    }
+
+    // ============================================================
+    // Scope / Evidence Navigation Validation
+    // ============================================================
+    //
+    // Mapping RuleからScope及びEvidence Referenceを
+    // Navigation Property経由で取得できることを確認する。
+    var mappingRulesWithGovernanceDetails =
+        await db.SemanticMappingRules
+            .AsNoTracking()
+            .Include(x => x.Scopes)
+            .Include(x => x.EvidenceReferences)
+            .OrderBy(x => x.MappingCode)
+            .ThenBy(x => x.MappingVersion)
+            .ToListAsync();
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== SEMANTIC MAPPING GOVERNANCE NAVIGATION VALIDATION ===");
+
+    foreach (var mappingRule in mappingRulesWithGovernanceDetails)
+    {
+        Console.WriteLine(
+            $"{mappingRule.MappingCode} | " +
+            $"Scopes={mappingRule.Scopes.Count} | " +
+            $"Evidence={mappingRule.EvidenceReferences.Count}");
+    }
+
+    // ============================================================
+    // Kioxia M3 Scope Validation
+    // ============================================================
+    //
+    // Kioxia固有Extension Conceptである
+    // SemiFinishedProductsAndWorkInProgressCAIFRSのM3 Mappingについて、
+    // Company-specific Scopeが正常に取得できることを確認する。
+    var kioxiaMappingRule =
+        await db.SemanticMappingRules
+            .AsNoTracking()
+            .Include(x => x.CanonicalRole)
+            .Include(x => x.Scopes)
+            .Include(x => x.EvidenceReferences)
+            .SingleAsync(x =>
+                x.MappingCode == "MAP-INV-011" &&
+                x.MappingVersion == 1);
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== KIOXIA M3 MAPPING VALIDATION ===");
+
+    Console.WriteLine(
+        $"Mapping Code   : {kioxiaMappingRule.MappingCode}");
+
+    Console.WriteLine(
+        $"Source QName   : {kioxiaMappingRule.SourceQName}");
+
+    Console.WriteLine(
+        $"Canonical Role : {kioxiaMappingRule.CanonicalRole.RoleCode}");
+
+    Console.WriteLine(
+        $"Mapping Class  : {kioxiaMappingRule.MappingClassCode}");
+
+    Console.WriteLine(
+        $"Scope Count    : {kioxiaMappingRule.Scopes.Count}");
+
+    Console.WriteLine(
+        $"Evidence Count : {kioxiaMappingRule.EvidenceReferences.Count}");
+
+    foreach (var scope in kioxiaMappingRule.Scopes
+                 .OrderBy(x => x.ScopeTypeCode))
+    {
+        Console.WriteLine(
+            $"Scope: {scope.ScopeTypeCode} " +
+            $"{scope.ScopeOperatorCode} " +
+            $"{scope.ScopeValue}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(
+        "=== SEMANTIC MAPPING PHASE A EF CORE VALIDATION END ===");
 
     return;
 }
