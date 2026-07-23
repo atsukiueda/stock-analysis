@@ -9,7 +9,7 @@
 | Status | Evidence Collection |
 | Reviewer Status | Pending independent re-review |
 | Period policy | 2021–present target; no complete comparable series asserted |
-| Last Updated | 2026-07-21 |
+| Last Updated | 2026-07-23 |
 
 > **Boundary:** Archive availability is not evidence acquisition, and evidence acquisition is not cross-company comparability. This document records those states separately.
 
@@ -34,11 +34,15 @@ No row below has `Series acquired` or `Comparable series` status unless explicit
 | Inventory ID | Owner | Official source | Coverage observed | Publication evidence | Status | Limitation |
 | --- | --- | --- | --- | --- | --- |
 | PIT-SI-001 | Renesas | [Earnings Reports archive](https://www.renesas.com/en/about/investor-relations/earning) | FY2021, FY2022, FY2023, FY2024, FY2025 annual and quarterly listings observed | FY2021 annual results announced 2022-02-09; FY2022 annual results announced 2023-02-09; subsequent listings shown in archive | Archive observed; selected FY2025 fact registered as EVR-003 | Source archives include corrections/amendments; period-by-period definition/revision capture remains required. |
-| PIT-SI-002 | ROHM | [Financial Statements archive](https://www.rohm.com/ir/library/annual-financial-report) and [Trend in Results](https://www.rohm.com/ir/financial/trend-in-results) | FY2021–FY2026 consolidated trend shown; FY2021 annual report listed | Annual FY2021 report listing; trend page values are a consolidated company history | Archive observed; FY2024 product fact registered as EVR-008 | Consolidated trends are not automotive revenue; source-audited product/segment series remains required. |
+| PIT-SI-002 | ROHM | [Financial Statements archive](https://www.rohm.com/ir/library/annual-financial-report), [Trend in Results](https://www.rohm.com/ir/financial/trend-in-results), and FY2022–FY2025 results presentations registered in EVR-019 and EVR-021–EVR-023 | FY2021–FY2026 consolidated trend shown; issuer-defined Automotive market-sales observations acquired for FY2021–FY2025 | Results presentations dated 2023-05-10 through 2026-05-13; overlapping values source-reconciled | Evidence registered / source observations acquired; comparability pending | Consolidated trends are not automotive revenue. The captured market-sales observations are not automotive product revenue and are not yet a validated comparable series. |
 | PIT-SI-003 | Fuji Electric | [Financial Results archive](https://www.fujielectric.com/ir/library/detail/financial_results.html) | FY2021–FY2025 financial-results pages observed | FY2021 results announced 2022-04-27; FY2022 2023-04-27; FY2023 2024-04-25; FY2024 2025-04-25; FY2025 2026-04-28 | Evidence registered: EVR-007, EVR-009, EVR-015–EVR-018; FY2021–FY2025 source-defined automotive sales observations acquired | FY2022 disclosure says the FY2021 figures reflect a FY2022 organizational restructuring; comparability requires independent disposition. |
-| PIT-SI-004 | Sanken Electric | Official IR archive target | Not established | One historical official presentation is linked but not fully audited | Source identified only | No historical archive inventory, period definition, or continuous source evidence registered. |
+| PIT-SI-004 | Sanken Electric | [Official IR Materials](https://www.sanken-ele.co.jp/corp/en/fina/library.htm), [Presentation Slides](https://www.sanken-ele.co.jp/corp/en/tousika/briefing.htm), FY2021 data-book, and FY2022 Q2 presentation | Historical FY2018–FY2020 observation registered as EVR-025 / PIT-016; source-defined FY2021 1Q / 2Q observations registered as EVR-026 / PIT-017 | FY2021 data book dated 2021-05-11; FY2022 Q2 presentation dated 2021-11-08 | Partial target-period evidence registered | No FY2021 full-year or FY2022–present continuous source evidence is registered; definition continuity is not established. |
 
 ---
+
+## Sanken FY2021 Acquisition Update
+
+> **Current Draft correction:** `EVR-026` / `PIT-017` records two source-defined target-period observations: FY2021 1Q and FY2021 2Q. The prior archive-inventory statement that no FY2021-present observation was acquired is superseded to this limited extent. It remains true that no FY2021 full-year or FY2022-present continuous Sanken series has been acquired, and definition continuity is not established.
 
 ## 3. Point-in-Time Record Contract
 
@@ -82,10 +86,27 @@ Each candidate observation must be recorded as one row before it can be evaluate
 | Requirement | Current state | Required next action |
 | --- | --- | --- |
 | Renesas series | Archive observed from FY2021 | Capture each document’s period, publication event, definition version, and selected observation values. |
-| ROHM series | Consolidated archive/trend observed from FY2021 | Identify automotive/power source-defined observation; do not use consolidated trend as automotive proxy. |
+| ROHM series | FY2021–FY2025 issuer-defined Automotive market-sales observations registered and overlap-reconciled | Independently dispose definition continuity; do not use consolidated trend as automotive proxy or treat the observations as a validated series. |
 | Fuji series | FY2021–FY2025 source-defined automotive sales observations acquired | Review segment/application definition and FY2022 reorganization effect before assigning comparability class. |
-| Sanken series | Not established | Audit official archive before any series acquisition. |
+| Sanken series | Historical FY2018–FY2020 observation registered; FY2021 1Q / 2Q source-defined observations registered; no complete target-period series | Acquire and audit official FY2021 full-year and later tables; independently dispose definition continuity before any joined series or comparison is considered. |
 | Cross-company series | Not started | Compare only after issuer-level series are complete and scope alignment is evidenced. |
+
+| PIT-010 | ROHM market-segment sales: Automotive | EVR-019 | FY2024 / FY2025 | 2026-05-13 (date-only) | TBD — no approved convention; no use | ROHM market classification; Automotive; JPYbn; `RestatementFlag: Unknown` | No class assigned; review status Pending classification; formal definition continuity not established | No |
+| PIT-011 | ROHM sales composition: Automotive | EVR-020 | FY2025 | 2026-05-13 (date-only) | TBD — no approved convention; no use | ROHM sales composition; Automotive; JPYbn / percent; `RestatementFlag: Unknown` | No class assigned; review status Pending classification; composition context only | No |
+| PIT-012 | ROHM market-segment sales: Automotive | EVR-021 | FY2022 / FY2023 | 2024-05-09 (date-only) | TBD — no approved convention; no use | ROHM market classification; Automotive; JPYbn; `RestatementFlag: Unknown` | No class assigned; review status Pending classification; formal definition continuity not established | No |
+| PIT-013 | ROHM market-segment sales: Automotive | EVR-022 | FY2021 / FY2022 | 2023-05-10 (date-only) | TBD — no approved convention; no use | ROHM market classification; Automotive; JPYbn; `RestatementFlag: Unknown` | No class assigned; review status Pending classification; source says calculated by most recent segment | No |
+| PIT-014 | ROHM market-segment sales: Automotive | EVR-023 | FY2023 / FY2024 | 2025-05-14 (date-only) | TBD — no approved convention; no use | ROHM market classification; Automotive; JPYbn; `RestatementFlag: Unknown` | No class assigned; review status Pending classification; formal definition continuity not established | No |
+| PIT-015 | Sanken consolidated market sales: `自動車(計)` | EVR-024 | FY2018 / FY2019 / FY2020 | 2021-05-11 (date-only) | TBD — no approved convention; no use | Consolidated market-sales trend; JPYm; `RestatementFlag: Unknown` | No class assigned; outside Sprint001 FY2021–present target period; no continuity evidence | No |
+| PIT-016 | Sanken consolidated market sales: source row `&#33258;&#21205;&#36554;(&#35336;)` | EVR-025 | FY2018 / FY2019 / FY2020 | 2021-05-11 (date-only) | TBD — no approved convention; no use | Consolidated market-sales trend; JPYm; `RestatementFlag: Unknown` | No class assigned; outside Sprint001 FY2021–present target period; no continuity evidence | No |
+
+| PIT-017 | Sanken quarterly Device consolidated sales by market: source series <span lang="ja">&#33258;&#21205;&#36554;</span> | EVR-026 | FY2021 1Q / FY2021 2Q | 2021-11-08 (date-only) | TBD — no approved convention; no use | Device consolidated sales classified by market; JPY hundred millions; `RestatementFlag: Unknown` | No class assigned; actual values only; no continuity with PIT-016 or later series established | No |
+
+## Sanken PIT Correction Overlay
+
+| Record ID | Effective status | Current route |
+| --- | --- | --- |
+| PIT-015 | Superseded correction trace — do not use. It references encoding-corrupt `EVR-024`. | None. |
+| PIT-016 | Current Draft PIT route for the historical source fact. | `EVR-025` and `SANKEN-AUTO-2018/2019/2020`. |
 
 ## 6. Review Disposition
 

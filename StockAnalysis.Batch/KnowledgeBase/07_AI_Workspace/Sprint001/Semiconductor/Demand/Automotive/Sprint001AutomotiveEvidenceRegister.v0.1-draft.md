@@ -11,7 +11,7 @@
 | Reviewer Status | Pending independent re-review |
 | Baseline Coverage | FY2021–FY2025 selected factual baseline; issuer-by-issuer comparability remains unresolved |
 | Historical-Series Status | Fuji source-defined automotive sales observations acquired; continuity under review. Other issuer series incomplete. |
-| Last Updated | 2026-07-21 |
+| Last Updated | 2026-07-23 |
 
 > **Authority boundary:** This register is the factual reference for the Sprint001 Draft package only. It is not a Catalog, canonical Knowledge Base, or substitute for the existing `SEMICONDUCTOR.md`. Drafts must reference these Evidence IDs rather than recreate their factual claims.
 
@@ -42,15 +42,37 @@ Every Fact considered for review must have: issuer/owner, document title, docume
 | EVR-017 | Fuji Electric, *FY2022 Financial Results* | Disclosed 2023-04-27; FY ended 2023-03-31; accessed 2026-07-21 | Printed p. 8 / PDF p. 7, `Business Results by Segment FY2022 (YoY)②`; printed p. 11 / PDF p. 10, major-components table | **Semiconductor-segment sales by application (Automotive):** JPY73.1bn (FY2021) and JPY100.2bn (FY2022). Automotive-semiconductor orders: +33% YoY; sales: +37% YoY. Footnote: FY2021 figures reflect organizational restructuring conducted in FY2022. | Monetary source observations acquired. Reorganization is a comparability constraint. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
 | EVR-018 | Fuji Electric, *FY2023 Consolidated Financial Results* | Disclosed 2024-04-25; FY ended 2024-03-31; accessed 2026-07-21 | Printed p. 9 / PDF p. 8, Semiconductors table; printed p. 11 / PDF p. 10, order commentary | **Semiconductor-segment sales by application (Automotive):** JPY100.2bn (FY2022) and JPY125.6bn (FY2023). Automotive-semiconductor orders: +24% YoY; Q4 order fulfilment delay due to component procurement. | Sales and order observations are distinct. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
 
+| EVR-019 | ROHM, *Financial Results for FY2025* | Dated 2026-05-13 (date-only; release time not captured); FY ended 2026-03-31; accessed 2026-07-23 | Printed p. 36 / PDF index p. 34, `FY2025 Results — Sales by Market Segment (YoY)` | **Market-segment sales (Automotive):** JPY223.8bn (FY2024) and JPY236.8bn (FY2025). | ROHM market classification; not automotive-only semiconductor product, SiC, or industry demand. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+| EVR-020 | ROHM, *Financial Results for FY2025* | Dated 2026-05-13 (date-only; release time not captured); FY ended 2026-03-31; accessed 2026-07-23 | Printed p. 5 / PDF index p. 3, `FY2025 Results — Sales Composition` | Automotive was **49.2%** of FY2025 sales composition; total sales were JPY481.1bn. | Composition context only; must not substitute for EVR-019 market-sales observation. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+| EVR-021 | ROHM, *Financial Results for FY2023* | Dated 2024-05-09 (date-only; release time not captured); FY ended 2024-03-31; accessed 2026-07-23 | Printed p. 5 / PDF index p. 3, `FY2023 Sales Trend by Market Segments (YoY)` | **Market-segment sales (Automotive):** JPY213.0bn (FY2022) and JPY229.4bn (FY2023). | ROHM market classification; not automotive-only semiconductor product, SiC, or industry demand. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+| EVR-022 | ROHM, *Financial Results for FY2022* | Dated 2023-05-10 (date-only; release time not captured); FY ended 2023-03-31; accessed 2026-07-23 | Printed p. 5 / PDF index p. 3, `FY2022 Sales Trend by Market Segments (YoY)` | **Market-segment sales (Automotive):** JPY172.5bn (FY2021) and JPY213.0bn (FY2022). | ROHM market classification; source footnote states market segment was calculated by most recent segment. Not automotive-only semiconductor product, SiC, or industry demand. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+| EVR-023 | ROHM, *Financial Results for FY2024* | Dated 2025-05-14 (date-only; release time not captured); FY ended 2025-03-31; accessed 2026-07-23 | Printed p. 5 / PDF index p. 3, `FY2024 Sales Trend by Market Segments (YoY)` | **Market-segment sales (Automotive):** JPY229.4bn (FY2023) and JPY223.8bn (FY2024). | ROHM market classification; not automotive-only semiconductor product, SiC, or industry demand. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+| EVR-024 | Sanken Electric, *FY2021 Business Performance Data* | Dated 2021-05-11 (date-only; release time not captured); source-labeled FY2018 / FY2019 / FY2020; accessed 2026-07-23 | Printed p. 4 / PDF index p. 3, `3．市場別 売上推移(連結)`, `自動車(計)` row | **Consolidated market sales (`自動車(計)`):** JPY76,442m (FY2018), JPY70,233m (FY2019), and JPY64,045m (FY2020). | Consolidated market classification; not semiconductor-device-only or automotive product revenue. Outside Sprint001 FY2021–present target period. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+
+| EVR-025 | Sanken Electric, *FY2021 Business Performance Data* | Dated 2021-05-11 (date-only; release time not captured); source-labeled FY2018 / FY2019 / FY2020; accessed 2026-07-23 | Printed p. 4 / PDF index p. 3, source table `3．&#24066;&#22580;&#21029; &#22770;&#19978;&#25512;&#31227;(&#36899;&#32080;)`, source row `&#33258;&#21205;&#36554;(&#35336;)` | **Consolidated market sales (source row `&#33258;&#21205;&#36554;(&#35336;)`; English working translation: Automotive total):** JPY76,442m (FY2018), JPY70,233m (FY2019), and JPY64,045m (FY2020). | Consolidated market classification; not semiconductor-device-only or automotive product revenue. Outside Sprint001 FY2021–present target period. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+
+| EVR-026 | Sanken Electric, *FY2022 Q2 Financial Results Presentation* | Dated 2021-11-08; source-labelled FY2021 1Q / 2Q; accessed 2026-07-23 | Printed p. 7 / PDF index p. 6, <span lang="ja">&#24066;&#22580;&#21029; &#12487;&#12496;&#12452;&#12473;&#36899;&#32080;&#22770;&#19978;&#39640; &#22235;&#21322;&#26399;&#25512;&#31227;</span>, series <span lang="ja">&#33258;&#21205;&#36554;</span> | **Quarterly Device consolidated sales by market (source series <span lang="ja">&#33258;&#21205;&#36554;</span>):** JPY21.4bn (FY2021 1Q) and JPY20.9bn (FY2021 2Q). The slide labels 2Q as an actual result; later forecast values are not registered. | Source-defined Device consolidated sales classified by market; not automotive product-category, SiC-only, power-device-only, or industry-demand revenue, and not a continuous series with EVR-025. `AvailableAt`: TBD — no approved convention; no use. | Source fact captured; PIT unavailable; comparability pending |
+
+## Sanken Evidence Correction Overlay
+
+> **Correction scope:** The rendered main-table text for `EVR-024` and `EVR-025` contains an encoding defect in the Japanese source-label fields. This overlay is the current Draft-package correction record for those fields; it does not alter the source values, period mapping, scope, or use restrictions.
+
+| Registry ID | Effective status | Corrected source identity | Authoritative Draft mapping |
+| --- | --- | --- | --- |
+| EVR-024 | Superseded correction trace — do not use | The source-label/table-title text is encoding-corrupt. | None; see EVR-025 correction row. |
+| EVR-025 | Current Draft source fact | Source table: <span lang="ja">3．&#24066;&#22580;&#21029; &#22770;&#19978;&#25512;&#31227;(&#36899;&#32080;)</span>; source row: <span lang="ja">&#33258;&#21205;&#36554;(&#35336;)</span>; English working translation: Automotive total. | [Sanken Raw Evidence](6707_SankenElectricAutomotiveMarketSalesRawEvidence.v0.1-draft.md), `SANKEN-AUTO-2018/2019/2020`; `PIT-016`. |
+
 ## Evidence Not Eligible as Fact
 
 | Candidate | Reason | Required action |
 | --- | --- | --- |
 | Sanken Automotive `Semi Device Sales Trend by Market` | Source period, table/unit, definition, and archive continuity have not been registered in this evidence register. | Complete source audit and add a fully identified entry; until then retain as `Unverified source observation`. |
+| EVR-024 Sanken historical market-sales row | Text encoding corrupts the source table title and source row label. It is superseded by `EVR-025`; do not use EVR-024. | Retain only as a correction trace; use EVR-025 for the source fact. |
 | Any cross-company or common `2021–present` time series | Archive pages and issuer facts do not establish a complete, definition-stable common series. Fuji's source-defined issuer-internal application-sales chain is recorded separately and remains PIT-unavailable. | Build issuer-by-issuer source inventory with period, locator, definition version, and comparability disposition. |
 
 ## Source Links
 
+- [Sanken FY2022 Q2 Financial Results Presentation](https://www.sanken-ele.co.jp/corp/tousika/pdf/frb_2203c_2q_j.pdf)
 - [OICA production statistics](https://oica.net/fr/production-statistics/)
 - [IEA Global EV Outlook 2025 — Executive Summary](https://www.iea.org/reports/global-ev-outlook-2025/executive-summary)
 - [Renesas Annual Securities Report 2025](https://www.renesas.com/en/document/rep/annual-securities-report-2025)
@@ -59,6 +81,11 @@ Every Fact considered for review must have: issuer/owner, document title, docume
 - [DENSO Integrated Report 2025](https://www.denso.com/global/en/about-us/investors/annual-report/integrated-report-2025/)
 - [Fuji Electric FY2025 Results Summary](https://www.fujielectric.com/ir/finance/detail/summary.html)
 - [ROHM Integrated Report 2025](https://fscdn.rohm.com/en/financial/integrated-report/rohm_group_integrated_report_2025_en_view.pdf)
+- [ROHM Financial Results for FY2025](https://fscdn.rohm.com/en/financial/account/2603_presentation_en.pdf)
+- [ROHM Financial Results for FY2024](https://fscdn.rohm.com/en/financial/account/2503_41811104_presentation_en.pdf)
+- [ROHM Financial Results for FY2023](https://fscdn.rohm.com/en/financial/account/2403_03268315_presentation_eng.pdf)
+- [ROHM Financial Results for FY2022](https://fscdn.rohm.com/en/financial/account/2303_82671549_presentation_eng.pdf)
+- [Sanken FY2021 Business Performance Data](https://www.sanken-ele.co.jp/corp/tousika/pdf/frb_2103c_j-04.pdf)
 - [Fuji Electric FY2022 Financial Results](https://www.fujielectric.com/ir/box/doc/pdf/gh2023_04/230427_01.pdf)
 - [Fuji Electric FY2023 Consolidated Financial Results](https://www.fujielectric.com/common-resource-gl/ir/data/20240425_1.pdf)
 - [Fuji Electric FY2024 Consolidated Financial Results](https://www.fujielectric.com/common-resource-gl/ir/data/20250425_1.pdf)
