@@ -1,24 +1,20 @@
 # Sprint001 Automotive Semiconductor Demand — Handoff Record
 
-## 1. Purpose and Authority Boundary
+## 1. Current State
 
-This record enables a new contributor, AI agent, or work session to resume the **Sprint001 Automotive Semiconductor Demand** Draft package without recreating prior work or extending its claims.
-
-It is a **Draft workspace record**. It is not canonical research, a Knowledge Catalog entry, a DDL specification, an implementation instruction, or a governance authority. Canonical controls remain the repository onboarding and Knowledge Base documents listed below.
-
-**Handoff status:** Research paused at a controlled evidence-acquisition boundary. Resume only the stated next action; do not infer missing periods, definitions, or availability conventions.
-
-| Control | Value |
+| Item | Current state |
 | --- | --- |
-| Handoff version | 0.2-draft |
-| Last updated / as of | 2026-07-24 (Asia/Tokyo) |
-| Evidence Register baseline | `Sprint001AutomotiveEvidenceRegister.v0.1-draft.md`, last updated 2026-07-23, `Reviewer Status: Pending independent re-review` |
-| PIT baseline | `Sprint001AutomotiveSourceInventoryAndPIT.v0.1-draft.md`, last updated 2026-07-23, `Reviewer Status: Pending independent re-review` |
-| Restart control | Before acting, re-read both baseline files and reconcile this handoff against their current versions. The registers control if they differ. |
+| Version / as of | 0.3-draft / 2026-07-25 (Asia/Tokyo) |
+| Scope | Sprint001 → Semiconductor → Demand → Automotive only |
+| Phase | Research / Evidence Collection |
+| Workspace | `KnowledgeBase/07_AI_Workspace/Sprint001/Semiconductor/Demand/Automotive/` only |
+| Governance | Governance v1.0 is Approved and Effective. Constitution / Policy / Standard / Procedure are frozen absent Material Governance Change. |
+| Formal evidence state | Evidence Register and PIT remain **Draft / Pending independent re-review**. Limited reviews do not approve, promote, or transition lifecycle state. |
+| Use restriction | `AvailableAt = TBD — no use`. No Catalog, DDL, Entity, Database, ML, backtest, Decision Engine, Advisor, or investment use. |
+
+This is a Draft workspace handoff, not canonical research or governance authority. If it conflicts with the Evidence Register or PIT, those current records control.
 
 ## 2. Read Before Acting
-
-Read in this order before any change:
 
 1. `README.md`
 2. `000_ProjectDocumentationConstitution.md`
@@ -26,213 +22,84 @@ Read in this order before any change:
 4. `AGENTS.md`
 5. `KnowledgeBase/00_Project/KnowledgeBaseRules.md`
 6. `KnowledgeBase/00_Project/ResearchPolicy.md`
-7. `KnowledgeBase/00_Project/NamingConvention.md`
-8. `KnowledgeBase/00_Project/ReviewPolicy.md`
-9. This handoff record
-10. `Sprint001AutomotiveEvidenceRegister.v0.1-draft.md`
-11. `Sprint001AutomotiveSourceInventoryAndPIT.v0.1-draft.md`
-12. `6707_SankenElectric_CompanyResearch.v0.1-draft.md`
-13. `6707_SankenElectricSourceArchiveAudit.v0.1-draft.md`
-14. `6707_SankenElectricAutomotiveMarketSalesRawEvidence.v0.1-draft.md`
-15. `6707_SankenElectricAutomotiveDeviceSalesFY2021Q2RawEvidence.v0.1-draft.md`
+7. `KnowledgeBase/00_Project/ReviewPolicy.md`
+8. This handoff
+9. `Sprint001AutomotiveEvidenceRegister.v0.1-draft.md`
+10. `Sprint001AutomotiveSourceInventoryAndPIT.v0.1-draft.md`
+11. `6707_SankenElectricAutomotiveSalesFY2021ToFY2024RawEvidence.v0.1-draft.md`
+12. `6707_SankenElectricAutomotiveMarketSalesRawEvidence.v0.1-draft.md`
+13. `6707_SankenElectricIndependentReview.v0.1-draft.md`
 
-## 3. Project and Governance State
+## 3. Non-Negotiable Boundaries
 
-| Item | Current state |
-| --- | --- |
-| Governance | Governance v1.0 is Approved and Effective. Constitution, Policy, Standard, and Procedure changes are frozen except through Material Governance Change. |
-| Sprint | Sprint001 — Semiconductor / Demand / Automotive |
-| Current phase | Research — Evidence Collection |
-| Draft workspace | `KnowledgeBase/07_AI_Workspace/Sprint001/Semiconductor/Demand/Automotive/` |
-| Canonical research promotion | Not started. No Sprint001 Draft has been promoted to `KnowledgeBase/01_Research/`. |
-| Catalog, DDL, and implementation | Not permitted from this Draft package. |
-| Research status | Paused after Sanken FY2021 1Q / 2Q evidence acquisition and independent review. |
+- Keep Fact, Inference, Hypothesis, Opinion, Proposal, and Decision distinct.
+- Prefer issuer-authored primary disclosures; record issuer, title, publication date, URL, page, table, row, period, unit, actual/forecast status, definition, and use boundary.
+- An author cannot approve the author's own work. Reviews must separately test Evidence, Knowledge, and Traceability, with problem discovery first.
+- Do not join observations merely because names or values are similar. Do not infer availability, definitions, mappings, continuity, comparability, or approval.
+- Drafts stay in this workspace. No promotion or downstream artifact creation.
 
-## 4. Fixed Scope
+## 4. Other Issuer Draft State
 
-```text
-Semiconductor
-  -> Demand
-    -> Automotive
-```
-
-Do not expand Sprint001 to semiconductor equipment, materials, packaging, or other subsectors. The authorized sequence is:
-
-```text
-Research
-  -> Independent Review
-  -> Knowledge Catalog
-  -> DDL
-  -> Codex implementation
-```
-
-## 5. Non-Negotiable Working Boundaries
-
-- Prefer primary issuer disclosures and retain a durable source URL, date, period, locator, definition, unit, and scope.
-- Keep **Fact**, **Inference**, **Hypothesis**, **Opinion**, **Proposal**, and **Decision** distinct.
-- Drafts remain in `KnowledgeBase/07_AI_Workspace/`; only independently reviewed and approved material may be promoted to `KnowledgeBase/01_Research/`.
-- An author cannot independently approve the author's own work.
-- Do not join issuer disclosures into a common industry series without an explicit definition and comparability disposition.
-- `AvailableAt = TBD — no use` blocks Catalog, DDL, ML, backtest, and investment use. Do not invent an operating convention to bypass it.
-- Do not create governance changes, DDL, Entity, Database, ML, Decision Engine, or Advisor artifacts to resolve a research gap.
-
-## 6. Core Draft Package
-
-| Asset | Role |
-| --- | --- |
-| `AutomotiveSemiconductorDemandIndustryReport.v0.1-draft.md` | Industry-level Draft baseline. |
-| `AutomotiveSemiconductorValueChain.v0.1-draft.md` | Value-chain Draft baseline. |
-| `AutomotiveSemiconductorLeadLagIndicatorCatalog.v0.1-draft.md` | Candidate indicator taxonomy; not a Catalog. |
-| `AutomotiveSemiconductorEvidenceAcquisitionMatrix.v0.1-draft.md` | Evidence-acquisition plan. |
-| `Sprint001AutomotiveEvidenceRegister.v0.1-draft.md` | Draft evidence identity and factual-register boundary. |
-| `Sprint001AutomotiveSourceInventoryAndPIT.v0.1-draft.md` | Archive / acquisition / PIT readiness record. |
-| `Sprint001AutomotiveSharedTerms.v0.1-draft.md` | Working vocabulary only. |
-| `Sprint001AutomotiveReviewPackageCover.v0.1-draft.md` | Review package navigation. |
-
-## 7. Issuer Evidence State
-
-### 7.1 Fuji Electric (6504)
-
-**Files**
-
-- `6504_FujiElectric_CompanyResearch.v0.1-draft.md`
-- `6504_FujiElectricAutomotivePowerRawEvidence.v0.1-draft.md`
-- `6504_FujiElectricApplicationSalesDefinitionAudit.v0.1-draft.md`
-- `6504_FujiElectricIndependentReview.v0.1-draft.md`
-
-**Facts captured in the Draft package**
-
-- Semiconductor-segment sales by application: Automotive: FY2021 to FY2025 = JPY73.1bn, JPY100.2bn, JPY125.6bn, JPY132.6bn, and JPY117.7bn.
-- FY2022 disclosure states that the FY2021 figure reflects an organizational restructuring.
-- FY2025 automotive application-sales commentary must retain both reduced xEV power-semiconductor demand and prior-year selling-price-revision impact.
-
-**Boundary**
-
-This is bounded issuer-internal Draft evidence only. It is not a common industry series, and `AvailableAt = TBD — no use` prevents downstream use.
-
-### 7.2 Renesas Electronics (6723)
-
-**Files**
-
-- `6723_RenesasElectronics_CompanyResearch.v0.1-draft.md`
-- `6723_RenesasAutomotiveRevenueRawEvidence.v0.1-draft.md` — historical working evidence only; do not treat its event dates as current.
-- `6723_RenesasAutomotiveRevenueRawEvidence.v0.2-draft.md` — current raw-evidence record.
-- `6723_RenesasAutomotiveRevenueDefinitionAudit.v0.1-draft.md`
-- `6723_RenesasAutomotiveRevenueSourceEventReconciliation.v0.1-draft.md`
-
-**Facts captured in the Draft package**
-
-- FY2023 original Automotive Business revenue: JPY695.0bn.
-- FY2023 revised Automotive Business revenue: JPY660.4bn.
-- These are mutually exclusive: Renesas changed aggregation in FY2024 from product groupings to customer names and revised FY2023 information.
-- A revised-basis candidate window only is recorded: FY2023 revised JPY660.4bn, FY2024 JPY702.8bn, FY2025 JPY639.7bn.
-
-**Boundary**
-
-FY2021 and FY2022 customer-name-basis restatements and their publication events are not captured. Do not create a five-year single-basis series.
-
-### 7.3 ROHM (6963)
-
-**Files**
-
-- `6963_ROHM_CompanyResearch.v0.1-draft.md`
-- `6963_ROHMAutomotiveMarketSalesRawEvidence.v0.1-draft.md`
-- `6963_ROHMAutomotiveMarketSalesDefinitionAudit.v0.1-draft.md`
-
-**Facts captured in the Draft package**
-
-- Issuer-defined Automotive market sales: FY2021 to FY2025 = JPY172.5bn, JPY213.0bn, JPY229.4bn, JPY223.8bn, and JPY236.8bn.
-- Overlapping FY2022, FY2023, and FY2024 values are reconciled across adjacent official presentations.
-
-**Boundary**
-
-The measure is an issuer-defined market classification, not automotive-product, SiC, power-device, discrete-device, OEM, or industry-demand revenue. The FY2022 source says `Market Segment: Calculated by most recent segment`; methodology continuity is not established. No validated continuous series, comparability class, Catalog use, or downstream use exists.
-
-### 7.4 Sanken Electric (6707) — Current Stop Point
-
-**Files**
-
-- `6707_SankenElectric_CompanyResearch.v0.1-draft.md`
-- `6707_SankenElectricSourceArchiveAudit.v0.1-draft.md`
-- `6707_SankenElectricAutomotiveMarketSalesRawEvidence.v0.1-draft.md`
-- `6707_SankenElectricAutomotiveDeviceSalesFY2021Q2RawEvidence.v0.1-draft.md`
-
-**Evidence identity**
-
-| ID | Source-defined measure | Period and value | Status / boundary |
-| --- | --- | --- | --- |
-| `EVR-025` / `PIT-016` | Historical consolidated market sales; source row Automotive total | FY2018 JPY76,442m; FY2019 JPY70,233m; FY2020 JPY64,045m | Historical context only. Outside the Sprint001 target period. No continuity claim. |
-| `EVR-026` / `PIT-017` | Device consolidated sales classified by market; source series Automotive | FY2021 1Q JPY21.4bn; FY2021 2Q JPY20.9bn | Two source-presented actual quarterly observations only. No FY2021 full-year or later continuous series. |
-
-**EVR-026 primary source**
-
-- [FY2022 Q2 Financial Results Presentation](https://www.sanken-ele.co.jp/corp/tousika/pdf/frb_2203c_2q_j.pdf)
-- Dated 2021-11-08.
-- Printed page 7 / PDF index page 6.
-- Source title: market-by-market quarterly trend in Device consolidated sales.
-- Unit: JPY hundred millions; the recorded values are transparently converted to JPY billions.
-- The source identifies 2Q as an actual result. Later forecast-context values are deliberately not registered as facts.
-
-**Sanken boundary**
-
-Do not describe `EVR-026` as automotive product-category revenue, SiC-only revenue, power-device-only revenue, OEM demand, or automotive semiconductor industry demand. Do not join it to `EVR-025`; the source titles and periodicities do not establish definition continuity. `AvailableAt = TBD — no use` remains in force.
-
-## 8. Review and Lifecycle Status
-
-The formal lifecycle state of the Sprint package is controlled by the Evidence Register and PIT baseline named in Section 1. Both currently state `Reviewer Status: Pending independent re-review`.
-
-| Scope | Repository-verifiable review record | Current formal status |
+| Issuer | Facts retained in Draft | Boundary |
 | --- | --- | --- |
-| Fuji evidence | `6504_FujiElectricIndependentReview.v0.1-draft.md` | Draft package remains pending independent re-review. |
-| Renesas, ROHM, and Sanken evidence | No formal independent-review record is currently listed in this Draft workspace. Do not infer approval from prior work-session discussion. | Draft package remains pending independent re-review. |
-| Entire Sprint001 package | No package-level review record is identified. | Pending independent re-review. |
+| Fuji Electric (6504) | Semiconductor-segment Automotive application sales: FY2021–FY2025 JPY73.1bn / 100.2bn / 125.6bn / 132.6bn / 117.7bn. | Issuer-internal evidence only; not a common industry series; `AvailableAt = TBD — no use`. |
+| Renesas Electronics (6723) | FY2023 Automotive Business revenue: original JPY695.0bn and revised JPY660.4bn; revised-basis candidate FY2023–FY2025: JPY660.4bn / 702.8bn / 639.7bn. | Original and revised FY2023 observations are mutually exclusive. FY2021–FY2022 customer-name-basis restatements are not acquired; do not create a five-year single-basis series. |
+| ROHM (6963) | Issuer-defined Automotive market sales FY2021–FY2025: JPY172.5bn / 213.0bn / 229.4bn / 223.8bn / 236.8bn. | Market classification, not product/SiC/power-device/industry-demand revenue; methodology continuity and comparability are unestablished. |
 
-No review statement in this handoff creates a lifecycle transition, canonical status, Catalog eligibility, or downstream-use permission.
+## 5. Sanken Electric (6707) — Current Evidence State
 
-## 9. Known Blockers
+### Facts recorded
 
-1. No approved `AvailableAt` convention exists.
-2. No Sprint001 Draft has been approved as a Knowledge Catalog entry.
-3. No DDL design may start from this Draft package.
-4. Cross-company comparability is not established for any issuer series.
-5. Sanken has no acquired FY2021 full-year or FY2022-present continuous Automotive series.
-6. Renesas has no acquired FY2021-FY2022 restatement on the customer-name basis.
+| IDs | Source-defined measure | Period / source-presented value | Controlled boundary |
+| --- | --- | --- | --- |
+| `EVR-025` / `PIT-016` | Historical consolidated market sales, Automotive total | FY2018 JPY76,442m; FY2019 JPY70,233m; FY2020 JPY64,045m | Historical context only; outside target period. |
+| `EVR-026` / `PIT-017` | Device consolidated sales by market, Automotive | FY2021 1Q JPY21.4bn; 2Q JPY20.9bn | Two actual quarterly observations only. |
+| `EVR-027` / `PIT-018` | Device consolidated sales by market, Automotive | FY2021 quarterly actuals; JPY85.8bn is arithmetic-derived only | No source-presented FY2021 annual observation in this record. |
+| `EVR-028` / `PIT-019` | Device consolidated sales by market, Automotive | FY2022 full year JPY114.5bn | Source-defined measure; continuity remains unestablished. |
+| `EVR-029` / `PIT-020` | Device consolidated sales by market, Automotive | FY2023 full year JPY138.7bn | Source-defined measure; continuity remains unestablished. |
+| `EVR-030` / `PIT-021` | Sanken Core sales by market, Automotive | FY2024 quarterly actuals JPY7.9bn / 7.8bn / 7.2bn / 8.7bn; JPY31.6bn is arithmetic-derived only | Source title differs from FY2021–FY2023. Underlying effect is Unknown. |
+| `EVR-031` / `PIT-022` | Consolidated market sales, Automotive | FY2021 JPY87,899m | Separate issuer table; no mapping or comparability claim. |
+| `EVR-032` / `PIT-023` | Consolidated market sales, Automotive | FY2022 JPY116,986m | Separate issuer table; no mapping or comparability claim. |
+| `EVR-033` / `PIT-024` | Consolidated market sales, Automotive | FY2023 JPY141,536m | Separate issuer table; no mapping or comparability claim. |
+| `EVR-034` / `PIT-025` | Consolidated market sales, Automotive | FY2024 JPY55,562m | The source states Allegro MicroSystems, Inc. and Polar Semiconductor, LLC were excluded from consolidation. |
+| `EVR-035` / `PIT-026` | Reclassified comparative consolidated market sales, Automotive | FY2024 JPY31,668m | Later source-presented comparative; separate from EVR-034. Its note components do not arithmetically reproduce the displayed value; no reconciliation is inferred. |
+| `EVR-036` / `PIT-027` | `Sales by Market`, Automotive / Sanken Core | FY2024 JPY31,668m | Distinct `Sales by Market` table. |
+| `EVR-037` / `PIT-028` | `Net Sales by Market`, Automotive / Sanken Core | FY2024 comparative JPY31,668m; FY2025 JPY31,390m | Source states Allegro and the Switching Power Supply Product (Former Unit Products) business were reclassified into `Others`. `RestatementFlag: Yes` applies to its FY2024 comparative. |
 
-## 10. Exact Next Action
+### Required non-claims
 
-Continue **only** Sanken primary-source acquisition.
+- Numeric equality of FY2024 JPY31,668m among `EVR-035`, `EVR-036`, and `EVR-037` does **not** establish identity, mapping, continuity, or comparability.
+- `EVR-036` is `Sales by Market`; `EVR-037` is `Net Sales by Market`. These are distinct source tables.
+- No listed observation is automotive product revenue, SiC-only revenue, power-device-only revenue, OEM demand, or automotive-semiconductor industry demand unless the specific source says so.
+- No joined Sanken FY2021–FY2025 series exists.
 
-1. Locate an official Sanken FY2021 full-year result presentation or equivalent official disclosure that might include the Automotive market / Device sales table.
-2. If identified, capture the document title, issuer, publication date, durable URL, printed/PDF page locator, source table title, row / series label, period, unit, exact value, scope, and forecast-versus-actual status.
-3. Create a new Draft raw-evidence record; do not modify `EVR-026` to add a new observation.
-4. Immediately before allocating any new identifier, re-read the current `Sprint001AutomotiveEvidenceRegister.v0.1-draft.md` and `Sprint001AutomotiveSourceInventoryAndPIT.v0.1-draft.md`. Confirm the next unused identifier from the current files; do not reserve or predict an ID in advance.
-5. In one coherent Draft update, add the new Evidence Register row and its matching PIT row, with explicit reciprocal references. Then update the applicable Sanken raw-evidence, Company Research, and Source Archive Audit records only where their factual state changed.
-6. If no suitable source is located, update `6707_SankenElectricSourceArchiveAudit.v0.1-draft.md` only. Record the research date, official archive path or durable URL searched, precise search / navigation boundary, specifically identified documents checked, and the limited result: no suitable document was identified within that verified scope. Do not claim that no official source exists.
-7. Request independent Evidence, Knowledge, and Traceability reviews. Revise and re-review when a material issue is found.
-8. Before ending the work session, update this handoff's `Last updated / as of`, exact stop point, and next action if the work state changed.
+## 6. Review Record
 
-## 11. Do Not Do
+`6707_SankenElectricIndependentReview.v0.1-draft.md` records limited independent reviews for `EVR-031` through `EVR-037`.
 
+Facts about the review state:
+
+- Evidence, Knowledge, and Traceability reviewers reported no new finding after targeted remediation for `EVR-035`, `EVR-036`, and `EVR-037`.
+- `K-037-001` required explicit principal-record non-claims between the distinct `Sales by Market` and `Net Sales by Market` tables; it was remediated and re-reviewed with no new Knowledge finding.
+
+**Status boundary:** None of these reviews is approval, an independent lifecycle disposition for the package, a promotion, or authorization for downstream use. Formal status remains **Draft / Evidence Collection / Pending independent re-review**.
+
+## 7. Exact Next Action
+
+Continue only targeted primary-source research for an issuer statement that explicitly explains the relationship, if any, among:
+
+1. FY2021–FY2023 `Device consolidated sales by market`;
+2. FY2024–FY2025 `Sanken Core` market-sales tables; and
+3. the FY2024 reclassification to `Others`.
+
+Do not treat matching values, labels, or adjacent presentations as that statement. If a qualifying fact is found, first re-read the Evidence Register and PIT, confirm unused IDs, then update the relevant Raw Evidence, Evidence Register, and PIT in one coherent Draft change. Request independent Evidence, Knowledge, and Traceability review before recording any conclusion beyond the source fact.
+
+If no qualifying material is found, update only `6707_SankenElectricSourceArchiveAudit.v0.1-draft.md` with the research date, official sources checked, scope searched, and limited non-finding. Do not state that no official source exists.
+
+## 8. Do Not Do
+
+- Do not change governance documents.
 - Do not promote, release, move, or rename Draft research.
-- Do not alter the Governance v1.0 Constitution, Policies, Standards, or Procedures.
-- Do not create a shared issuer series, a Catalog entry, DDL, Entity, Database, ML, Decision Engine, or Advisor artifact.
-- Do not replace source-defined terms with broader economic claims.
-- Do not add forecast values as actual observations.
-- Do not infer a release time, `AvailableAt`, period mapping, definition continuity, or approval history.
-
-## 12. Definition of Done for Sprint001
-
-Sprint001 may proceed to Knowledge Catalog review only when the Automotive Semiconductor Demand package is independently reviewed, traceable to primary evidence, definition-controlled, free from unsupported issuer-series mixing, and sufficiently complete that DDL design does not require additional industry-level research.
-
-## 13. Suggested Restart Prompt
-
-```text
-Read the onboarding and governance documents listed in
-Sprint001_Automotive_Handoff.md, then read the Evidence Register and
-PIT inventory. Continue only Sprint001 Automotive Semiconductor Demand
-in the Draft workspace. The immediate task is to locate official Sanken
-FY2021 full-year and FY2022-onward Automotive Device-sales disclosures.
-Preserve Fact / Inference separation, AvailableAt = TBD — no use, and
-independent Evidence / Knowledge / Traceability review. Do not promote
-any Draft to Catalog, DDL, or implementation.
-```
+- Do not create Catalog, DDL, Entity, Database, ML, Decision Engine, Advisor, backtest, or investment artifacts.
+- Do not use forecast values as actual observations.
+- Do not alter `AvailableAt = TBD — no use`.
